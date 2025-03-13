@@ -1,5 +1,31 @@
 server:
   host: "0.0.0.0"
   port: 8000
-api_keys:
-  - "your_api_key_here"
+  debug: true
+
+twilio:
+  account_sid: "${TWILIO_ACCOUNT_SID}"
+  auth_token: "${TWILIO_AUTH_TOKEN}"
+  from_number: "+1234567890"      # Your Twilio phone number
+  to_number: "+0987654321"        # Recipient phone number
+
+smtp:
+  server: "smtp.example.com"      # e.g., smtp.gmail.com
+  port: 587                       # Typically 587 for TLS
+  username: "${SMTP_USERNAME}"
+  password: "${SMTP_PASSWORD}"
+  from_email: "your_email@example.com"
+  to_email: "recipient@example.com"
+
+cloud_storage:
+  provider: "aws"                 # Change to your provider (e.g., aws, gcp, etc.)
+  bucket: "server-room-videos"
+  access_key: "${CLOUD_STORAGE_ACCESS_KEY}"
+  secret_key: "${CLOUD_STORAGE_SECRET_KEY}"
+  region: "us-east-1"
+
+sensors:
+  # List of RFID tag IDs that are allowed access.
+  rfid_allowed_tags:
+    - "TAG12345"
+    - "TAG67890"
