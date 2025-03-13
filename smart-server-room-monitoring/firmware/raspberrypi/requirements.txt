@@ -1,0 +1,3 @@
+# Python dependencies (e.g., gpiozero, picamera, Flask, OpenCV, Twilio)
+
+...existing content...

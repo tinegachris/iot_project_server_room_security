@@ -1,0 +1,3 @@
+# Module for interfacing with sensors (GPIO, RFID, etc.)
+
+...existing content...

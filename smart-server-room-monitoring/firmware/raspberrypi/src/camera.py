@@ -1,0 +1,3 @@
+# Module for video surveillance (using picamera/picamera2)
+
+...existing content...

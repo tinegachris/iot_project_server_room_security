@@ -1,0 +1,3 @@
+# System Architecture Diagrams
+
+...existing content...
