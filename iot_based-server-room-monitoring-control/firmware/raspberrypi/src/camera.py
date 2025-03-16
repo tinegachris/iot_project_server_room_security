@@ -14,6 +14,7 @@ Functions:
 import time
 import os
 import logging
+import requests
 from picamera import PiCamera
 
 # Configure logging for debugging
@@ -22,10 +23,82 @@ logging.basicConfig(level=logging.INFO,
 
 # Directory to store recorded videos; adjust this path as needed.
 VIDEO_OUTPUT_DIR = "/home/pi/Videos"
+IMAGE_OUTPUT_DIR = "/home/pi/Pictures"
 
 # Ensure the output directory exists
-if not os.path.exists(VIDEO_OUTPUT_DIR):
-    os.makedirs(VIDEO_OUTPUT_DIR)
+try:
+    os.makedirs(VIDEO_OUTPUT_DIR, exist_ok=True)
+    os.makedirs(IMAGE_OUTPUT_DIR, exist_ok=True)
+except Exception as e:
+    logging.error("Failed to create output directories: %s", e)
+    raise
+
+CLOUD_STORAGE_URL = "https://your-cloud-storage-service.com/upload"
+
+def upload_to_cloud(file_path):
+    """
+    Uploads a file to cloud storage.
+
+    Args:
+        file_path (str): The path to the file to upload.
+
+    Returns:
+        str: The URL of the uploaded file.
+    """
+    try:
+        with open(file_path, 'rb') as file:
+            response = requests.post(CLOUD_STORAGE_URL, files={'file': file})
+            response.raise_for_status()
+            logging.info("File uploaded to cloud storage successfully.")
+            return response.json().get('url')
+    except requests.RequestException as e:
+        logging.error("Failed to upload file to cloud storage: %s", e)
+        raise
+    except Exception as e:
+        logging.error("An unexpected error occurred: %s", e)
+        raise
+
+def capture_image(resolution=(1280, 720), rotation=0, brightness=50):
+    """
+    Captures a still image using the Raspberry Pi Camera.
+    Allows customization of camera settings to optimize image capture.
+
+    Args:
+        resolution (tuple, optional): Resolution (width, height) in pixels.
+                                      Defaults to (1280, 720).
+        rotation (int, optional): Rotation angle in degrees (0, 90, 180, 270).
+                                  Defaults to 0.
+        brightness (int, optional): Brightness setting (0 to 100).
+                                    Defaults to 50.
+
+    Returns:
+        str: The full file path to the captured image.
+    """
+    camera = PiCamera()
+    try:
+        camera.resolution = resolution
+        camera.rotation = rotation
+        camera.brightness = brightness
+
+        logging.info("Camera settings: resolution=%s, rotation=%d, brightness=%d",
+                     resolution, rotation, brightness)
+
+        time.sleep(2)
+
+        timestamp = int(time.time())
+        file_path = os.path.join(IMAGE_OUTPUT_DIR, f"image_{timestamp}.jpg")
+
+        logging.info(f"Capturing image: {file_path}")
+        camera.capture(file_path)
+
+        return file_path
+
+    except Exception as e:
+        logging.error("Error during image capture: %s", e)
+        raise
+
+    finally:
+        camera.close()
 
 def record_video(duration=10, resolution=(1280, 720), framerate=30, rotation=0, brightness=50):
     """
@@ -47,10 +120,8 @@ def record_video(duration=10, resolution=(1280, 720), framerate=30, rotation=0, 
     Returns:
         str: The full file path to the recorded video.
     """
-    # Create a camera instance
     camera = PiCamera()
     try:
-        # Set camera settings for intrusion events
         camera.resolution = resolution
         camera.framerate = framerate
         camera.rotation = rotation
@@ -59,10 +130,8 @@ def record_video(duration=10, resolution=(1280, 720), framerate=30, rotation=0, 
         logging.info("Camera settings: resolution=%s, framerate=%d, rotation=%d, brightness=%d",
                      resolution, framerate, rotation, brightness)
 
-        # Allow the camera to warm up
         time.sleep(2)
 
-        # Create a unique filename based on the current timestamp
         timestamp = int(time.time())
         file_path = os.path.join(VIDEO_OUTPUT_DIR, f"video_{timestamp}.h264")
 
@@ -72,7 +141,8 @@ def record_video(duration=10, resolution=(1280, 720), framerate=30, rotation=0, 
         camera.stop_recording()
         logging.info("Video recording stopped.")
 
-        return file_path
+        cloud_url = upload_to_cloud(file_path)
+        return file_path, cloud_url
 
     except Exception as e:
         logging.error("Error during video recording: %s", e)
@@ -82,12 +152,11 @@ def record_video(duration=10, resolution=(1280, 720), framerate=30, rotation=0, 
         camera.close()
 
 if __name__ == "__main__":
-    # Test the record_video function when this module is run standalone.
     try:
-        test_duration = 5  # Record for 5 seconds for testing purposes.
+        test_duration = 5
         logging.info(f"Recording video for {test_duration} seconds with default settings...")
-        video_file = record_video(duration=test_duration)
-        logging.info(f"Test video saved to: {video_file}")
-        print(f"Test video saved to: {video_file}")
+        video_file, cloud_url = record_video(duration=test_duration)
+        logging.info(f"Test video saved to: {video_file}, Cloud URL: {cloud_url}")
+        print(f"Test video saved to: {video_file}, Cloud URL: {cloud_url}")
     except Exception as err:
         logging.error("An error occurred in testing: %s", err)
