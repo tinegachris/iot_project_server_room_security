@@ -34,8 +34,8 @@ def main():
                 logging.info("Activating video capture and sending alert.")
 
                 # Record video clip upon event detection
-                video_file = camera.record_video(duration=VIDEO_DURATION)
-                logging.info(f"Video recorded: {video_file}")
+                video_file, cloud_url = camera.record_video(duration=VIDEO_DURATION)
+                logging.info(f"Video recorded: {video_file}, Cloud URL: {cloud_url}")
 
                 # Build alert message including the event type
                 event_type = []
@@ -45,8 +45,8 @@ def main():
                     event_type.append("unauthorized RFID access")
                 event_str = " and ".join(event_type)
 
-                alert_message = f"Alert: {event_str} in server room. Video captured at {video_file}"
-                notifications.send_alert(alert_message)
+                alert_message = f"Alert: {event_str} in server room. Video captured at {cloud_url}"
+                notifications.send_alert(alert_message, channels=["sms", "email", "fcm"])
 
                 # Optional: delay longer after an event to avoid redundant alerts
                 time.sleep(POLL_INTERVAL * 2)
