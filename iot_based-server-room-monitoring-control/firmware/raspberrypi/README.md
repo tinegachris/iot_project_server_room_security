@@ -12,3 +12,9 @@ powershell
 
 $env:READTHEDOCS="True"
 pip install picamera
+
+## RFID Reader Setup
+
+https://store.nerokas.co.ke/SKU-841
+
+https://geraintw.blogspot.com/2014/01/rfid-and-raspberry-pi.html
