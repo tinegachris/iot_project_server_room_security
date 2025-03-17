@@ -1,7 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
+from .database import get_db
+from .controllers import process_alert_and_event
 
 router = APIRouter()
 
@@ -38,7 +41,7 @@ async def get_logs():
     return logs
 
 @router.post("/alert", status_code=status.HTTP_201_CREATED)
-async def post_alert(alert: Alert):
+async def post_alert(alert: Alert, db: Session = Depends(get_db)):
     """
     POST /alert endpoint for manual alert triggering.
     Accepts a JSON payload containing an alert message, optional video URL,
@@ -53,6 +56,7 @@ async def post_alert(alert: Alert):
         details=alert.message
     )
     logs.append(log_entry)
+    process_alert_and_event(db, "manual_alert", alert.message, alert.video_url)
     return {"message": "Alert processed", "log_id": log_entry.id}
 
 @router.post("/control")
