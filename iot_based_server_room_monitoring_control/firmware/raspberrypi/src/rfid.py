@@ -12,7 +12,7 @@ Dependencies:
 """
 
 import RPi.GPIO as GPIO
-import spi
+import spidev as spi
 import logging
 import time
 
