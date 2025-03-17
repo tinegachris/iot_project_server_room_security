@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/admin/iot_project_server_room_security/venv/bin/python3
 """
 rfid.py
 
@@ -12,7 +12,7 @@ Dependencies:
 """
 
 import RPi.GPIO as GPIO
-import spidev as spi
+import spi
 import logging
 import time
 
