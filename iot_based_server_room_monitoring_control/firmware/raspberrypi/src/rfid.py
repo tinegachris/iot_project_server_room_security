@@ -301,60 +301,61 @@ class MFRC522:
 
 
 class RFIDReader:
-    def __init__(self, spd: int = 1000000):
-        self.rfid = MFRC522(spd)
+        def __init__(self, spd: int = 1000000):
+                self.rfid = MFRC522(spd)
 
-    def read_card(self) -> Tuple[int, List[int]]:
-        """
-        Read the ID of an RFID card.
-        """
-        status, tag_type = self.rfid.MFRC522_Request(self.rfid.PICC_REQIDL)
-        if status == self.rfid.MI_OK:
-            status, uid = self.rfid.MFRC522_Anticoll()
-            if status == self.rfid.MI_OK:
-                return status, uid
-        return status, []
-    
-    def authenticate_card(self, uid: List[int]) -> Tuple[int, str]:
-        """
-        Authenticate an RFID card based on its UID.
-        """
-        card_uid_tuple = tuple(uid)
-        if card_uid_tuple in AUTHORIZED_CARDS:
-            return self.rfid.MI_OK, AUTHORIZED_CARDS[card_uid_tuple]["role"]
-        return self.rfid.MI_ERR, ""
+        def read_card(self) -> Tuple[int, List[int]]:
+                """
+                Read the ID of an RFID card.
+                """
+                status, tag_type = self.rfid.MFRC522_Request(self.rfid.PICC_REQIDL)
+                if status == self.rfid.MI_OK:
+                        status, uid = self.rfid.MFRC522_Anticoll()
+                        if status == self.rfid.MI_OK:
+                                return status, uid
+                return status, []
+        
+        def authenticate_card(self, uid: List[int]) -> Tuple[int, str]:
+                """
+                Authenticate an RFID card based on its UID.
+                """
+                card_uid_tuple = tuple(uid)
+                card_info = AUTHORIZED_CARDS.get(card_uid_tuple)
+                if card_info:
+                        return self.rfid.MI_OK, card_info["role"]
+                return self.rfid.MI_ERR, ""
 
-    def read_card_data(self, block_addr: int) -> None:
-        """
-        Read data from a block on the RFID card.
-        """
-        self.rfid.MFRC522_Read(block_addr)
+        def read_card_data(self, block_addr: int) -> None:
+                """
+                Read data from a block on the RFID card.
+                """
+                self.rfid.MFRC522_Read(block_addr)
 
-    def write_card_data(self, block_addr: int, data: List[int]) -> None:
-        """
-        Write data to a block on the RFID card.
-        """
-        self.rfid.MFRC522_Write(block_addr, data)
+        def write_card_data(self, block_addr: int, data: List[int]) -> None:
+                """
+                Write data to a block on the RFID card.
+                """
+                self.rfid.MFRC522_Write(block_addr, data)
 
-    def cleanup(self) -> None:
-        """
-        Clean up the GPIO pins.
-        """
-        self.rfid.GPIO_CLEAN()
+        def cleanup(self) -> None:
+                """
+                Clean up the GPIO pins.
+                """
+                self.rfid.GPIO_CLEAN()
 
 if __name__ == "__main__":
-    rfid_reader = RFIDReader()
-    try:
-        while True:
-            status, uid = rfid_reader.read_card()
-            if status == rfid_reader.rfid.MI_OK:
-                logging.info("Card detected: %s", uid)
-                status, role = rfid_reader.authenticate_card(uid)
-                if status == rfid_reader.rfid.MI_OK:
-                    logging.info("Authenticated as: %s", role)
-                else:
-                    logging.error("Authentication failed")
-            time.sleep(1)
-    except KeyboardInterrupt:
-        rfid_reader.cleanup()
-        logging.info("Exiting...")
+        rfid_reader = RFIDReader()
+        try:
+                while True:
+                        status, uid = rfid_reader.read_card()
+                        if status == rfid_reader.rfid.MI_OK:
+                                logging.info("Card detected: %s", uid)
+                                status, role = rfid_reader.authenticate_card(uid)
+                                if status == rfid_reader.rfid.MI_OK:
+                                        logging.info("Authenticated as: %s", role)
+                                else:
+                                        logging.error("Authentication failed")
+                        time.sleep(1)
+        except KeyboardInterrupt:
+                rfid_reader.cleanup()
+                logging.info("Exiting...")

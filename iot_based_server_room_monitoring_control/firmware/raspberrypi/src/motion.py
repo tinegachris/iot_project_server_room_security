@@ -32,6 +32,10 @@ class SensorHandler:
     def create_sensor(self, gpio_pin: int) -> Type:
         """Create the sensor instance. To be implemented by subclasses."""
         raise NotImplementedError
+    
+    def cleanup(self) -> None:
+        """Clean up the resources used by the sensor. To be implemented by subclasses."""
+        raise NotImplementedError
 
 class MotionSensorHandler(SensorHandler):
     """Class to handle motion detection using a PIR sensor."""
@@ -53,6 +57,20 @@ class MotionSensorHandler(SensorHandler):
         """Callback for when no motion is detected."""
         logging.info("[Motion]: No motion detected!")
         self.indicator_led.off()
+        
+    def check_motion(self) -> bool:
+        """Check the status of the motion sensor.
+
+        Returns:
+            bool: True if motion is detected, otherwise False.
+        """
+        status = self.sensor.motion_detected
+        logging.debug(f"[Motion]: Check motion status - {'Detected' if status else 'Not detected'}")
+        return status
+    
+    def cleanup(self) -> None:
+        """Clean up the resources used by the motion sensor."""
+        self.sensor.close()
 
 class DoorSensorHandler(SensorHandler):
     """Class to handle door sensors using reed switches."""
@@ -74,6 +92,21 @@ class DoorSensorHandler(SensorHandler):
         """Callback for when the door is closed."""
         logging.info("[DoorSensor]: Door closed!")
         self.indicator_led.off()
+        
+    def check_door(self) -> bool:
+        """Check the status of the door sensor.
+
+        Returns:
+            bool: True if the door sensor is triggered (opened),
+                  otherwise False (closed).
+        """
+        status = self.sensor.is_pressed
+        logging.debug(f"[DoorSensor]: Check door status - {'Opened' if status else 'Closed'}")
+        return status
+    
+    def cleanup(self) -> None:
+        """Clean up the resources used by the door sensor."""
+        self.sensor.close()
 
 class WindowSensorHandler(SensorHandler):
     """Class to handle window sensors using reed switches."""
@@ -95,6 +128,21 @@ class WindowSensorHandler(SensorHandler):
         """Callback for when the window is closed."""
         logging.info("[WindowSensor]: Window closed!")
         self.indicator_led.off()
+
+    def check_window(self) -> bool:
+        """Check the status of the window sensor.
+
+        Returns:
+            bool: True if the window sensor is triggered (opened),
+                  otherwise False (closed).
+        """
+        status = self.sensor.is_pressed
+        logging.debug(f"[WindowSensor]: Check window status - {'Opened' if status else 'Closed'}")
+        return status
+    
+    def cleanup(self) -> None:
+        """Clean up the resources used by the window sensor."""
+        self.sensor.close()
 
 def main() -> None:
     """Main function to initialize sensor handlers and start monitoring."""
