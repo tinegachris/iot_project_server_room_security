@@ -1,18 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:security_iot/screens/login%20and%20signup/login_and_registration.dart';
-import 'package:security_iot/screens/onboarding/onboarding_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:security_iot/providers/app_state.dart';
+import 'package:security_iot/screens/home_screen.dart';
+import 'package:security_iot/screens/login_screen.dart';
+import 'package:security_iot/screens/onboarding_screen.dart';
 
 void main() {
-  runApp(SecurityApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => AppState(),
+      child: SecurityApp(),
+    ),
+  );
 }
 
 class SecurityApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Security Device Management',
+      title: 'Server Room Security',
       theme: ThemeData(
         primarySwatch: Colors.blue,
+        brightness: Brightness.light,
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
       ),
       home: OnboardingScreen(),
       routes: {
@@ -23,13 +37,10 @@ class SecurityApp extends StatelessWidget {
   }
 }
 
-
-
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
-
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
