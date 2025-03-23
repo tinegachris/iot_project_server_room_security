@@ -53,6 +53,10 @@ def main():
             else:
                 logging.info("No intrusion or unauthorized RFID access detected. Continuing monitoring...")
 
+            # Check for motion detection
+            if sensors.motion_sensor.motion_detected:
+                sensors.handle_motion()
+
             time.sleep(POLL_INTERVAL)
 
         except Exception as e:
