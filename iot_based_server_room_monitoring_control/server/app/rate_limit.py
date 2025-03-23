@@ -1,59 +1,88 @@
 from fastapi import HTTPException, Request
-from datetime import datetime, timedelta
-from typing import Dict, Tuple
+from fastapi.responses import JSONResponse
 import time
+import redis
+import os
+from dotenv import load_dotenv
+import logging
+from typing import Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
+
+# Redis configuration
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+
+# Rate limiting configuration
+RATE_LIMIT_REQUESTS = 100  # Number of requests allowed
+RATE_LIMIT_WINDOW = 60    # Time window in seconds
 
 class RateLimiter:
-    def __init__(self, requests: int, window: int):
-        self.requests = requests
-        self.window = window
-        self.requests_per_ip: Dict[str, list] = {}
+    def __init__(self):
+        try:
+            self.redis_client = redis.Redis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                db=REDIS_DB,
+                decode_responses=True
+            )
+            logger.info("Redis connection established successfully")
+        except redis.ConnectionError as e:
+            logger.error(f"Failed to connect to Redis: {str(e)}")
+            self.redis_client = None
 
-    def is_rate_limited(self, ip: str) -> Tuple[bool, int]:
-        """Check if an IP is rate limited."""
-        now = datetime.now()
-        if ip not in self.requests_per_ip:
-            self.requests_per_ip[ip] = []
-        
-        # Remove old timestamps
-        self.requests_per_ip[ip] = [
-            ts for ts in self.requests_per_ip[ip]
-            if now - ts < timedelta(seconds=self.window)
-        ]
-        
-        # Check if rate limit is exceeded
-        if len(self.requests_per_ip[ip]) >= self.requests:
-            return True, self.window - (now - self.requests_per_ip[ip][0]).seconds
-        
-        # Add new timestamp
-        self.requests_per_ip[ip].append(now)
-        return False, 0
+    async def check_rate_limit(self, request: Request, client_id: Optional[str] = None) -> bool:
+        """Check if the request should be rate limited"""
+        if not self.redis_client:
+            logger.warning("Redis not available, falling back to in-memory rate limiting")
+            return True
 
-# Create rate limiter instances
-rate_limiters: Dict[str, RateLimiter] = {}
+        try:
+            # Use client IP or provided client_id as key
+            key = client_id or request.client.host
+            current_time = int(time.time())
 
-def rate_limit(requests: int, window: int):
-    """Rate limiting decorator."""
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            request = next((arg for arg in args if isinstance(arg, Request)), None)
-            if not request:
-                return await func(*args, **kwargs)
-            
-            ip = request.client.host
-            limiter_key = f"{func.__name__}:{ip}"
-            
-            if limiter_key not in rate_limiters:
-                rate_limiters[limiter_key] = RateLimiter(requests, window)
-            
-            is_limited, wait_time = rate_limiters[limiter_key].is_rate_limited(ip)
-            
-            if is_limited:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Too many requests. Please wait {wait_time} seconds."
-                )
-            
-            return await func(*args, **kwargs)
-        return wrapper
-    return decorator 
+            # Clean old records
+            self.redis_client.zremrangebyscore(key, 0, current_time - RATE_LIMIT_WINDOW)
+
+            # Count requests in the current window
+            request_count = self.redis_client.zcard(key)
+
+            if request_count >= RATE_LIMIT_REQUESTS:
+                logger.warning(f"Rate limit exceeded for {key}")
+                return False
+
+            # Add current request
+            self.redis_client.zadd(key, {str(current_time): current_time})
+            self.redis_client.expire(key, RATE_LIMIT_WINDOW)
+
+            return True
+
+        except redis.RedisError as e:
+            logger.error(f"Redis error during rate limiting: {str(e)}")
+            return True  # Allow request if Redis fails
+
+    async def rate_limit_middleware(self, request: Request, call_next):
+        """FastAPI middleware for rate limiting"""
+        if not await self.check_rate_limit(request):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "Too many requests",
+                    "message": "Please try again later"
+                }
+            )
+        return await call_next(request)
+
+# Create rate limiter instance
+rate_limiter = RateLimiter()
+
+def get_rate_limiter() -> RateLimiter:
+    """Dependency to get rate limiter instance"""
+    return rate_limiter
