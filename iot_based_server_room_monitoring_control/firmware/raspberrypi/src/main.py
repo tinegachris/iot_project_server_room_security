@@ -18,12 +18,15 @@ VIDEO_DURATION = 10       # seconds of video to record upon event
 def main():
     logging.info("Starting IoT-based Server Room Monitoring System...")
 
+    sensor_manager = sensors.SensorManager(verbose=True)
+    sensor_manager.start()
+
     while True:
         try:
             # Check for traditional intrusion events (motion, door/window sensors)
-            intrusion_detected = sensors.check_intrusion()  # Expected to return True/False
+            intrusion_detected = sensor_manager.check_intrusion()  # Expected to return True/False
             # Check for unauthorized RFID access (access control violation)
-            rfid_violation = sensors.check_rfid()           # Expected to return True if an unauthorized RFID scan is detected
+            rfid_violation = sensor_manager.check_rfid()           # Expected to return True if an unauthorized RFID scan is detected
 
             if intrusion_detected or rfid_violation:
                 if intrusion_detected:
@@ -46,16 +49,12 @@ def main():
                 event_str = " and ".join(event_type)
 
                 alert_message = f"Alert: {event_str} in server room. Video captured at {cloud_url}"
-                notifications.send_alert(alert_message, channels=["sms", "email", "fcm"])
+                notifications.send_alert(alert_message, media_url=cloud_url, channels=["sms", "email", "fcm"])
 
                 # Optional: delay longer after an event to avoid redundant alerts
                 time.sleep(POLL_INTERVAL * 2)
             else:
                 logging.info("No intrusion or unauthorized RFID access detected. Continuing monitoring...")
-
-            # Check for motion detection
-            if sensors.motion_sensor.motion_detected:
-                sensors.handle_motion()
 
             time.sleep(POLL_INTERVAL)
 
