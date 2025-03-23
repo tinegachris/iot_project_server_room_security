@@ -32,7 +32,7 @@ class SensorManager:
         self._door_sensor = DoorSensorHandler(17, verbose)
         self._window_sensor = WindowSensorHandler(27, verbose)
         self._rfid_reader = RFIDReader()
-        self._threads = []
+        self._threads: List[threading.Thread] = []
 
     def _handle_motion(self):
         """Handles motion detection by the motion sensor."""
@@ -42,7 +42,7 @@ class SensorManager:
             else:
                 self._motion_sensor.on_no_motion()
             time.sleep(1)
-  
+
     def _handle_door(self):
         """Handles door detection by the door sensor."""
         while True:
@@ -51,7 +51,7 @@ class SensorManager:
             else:
                 self._door_sensor.on_close()
             time.sleep(1)
-    
+
     def _handle_window(self):
         """Handles window detection by the window sensor."""
         while True:
@@ -60,7 +60,7 @@ class SensorManager:
             else:
                 self._window_sensor.on_close()
             time.sleep(1)
-    
+
     def _handle_rfid(self):
         """Handles RFID detection by the RFID sensor."""
         while True:
@@ -102,7 +102,7 @@ class SensorManager:
             logging.warning("Intrusion detected!")
             return True
         return False
-    
+
     def check_rfid(self) -> bool:
         """
         Checks for unauthorized access by checking the RFID sensor.

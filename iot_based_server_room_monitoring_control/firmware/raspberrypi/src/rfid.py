@@ -29,6 +29,43 @@ class MFRC522:
         NRSTPD = 22
         MAX_LEN = 16
 
+        # Register definitions
+        CommandReg = 0x01
+        CommIEnReg = 0x02
+        CommIrqReg = 0x04
+        ErrorReg = 0x06
+        Status1Reg = 0x08
+        Status2Reg = 0x09
+        FIFODataReg = 0x0A
+        FIFOLevelReg = 0x0B
+        WaterLevelReg = 0x0C
+        ControlReg = 0x0D
+        BitFramingReg = 0x0E
+        CollReg = 0x0F
+        ModeReg = 0x11
+        TxModeReg = 0x12
+        RxModeReg = 0x13
+        TxControlReg = 0x14
+        TxAutoReg = 0x15
+        TxSelReg = 0x16
+        RxSelReg = 0x17
+        RxThresholdReg = 0x18
+        DemodReg = 0x19
+        TModeReg = 0x2A
+        TPrescalerReg = 0x2B
+        TReloadRegL = 0x2C
+        TReloadRegH = 0x2D
+        TxASKReg = 0x2E
+        TxSelReg = 0x2F
+        CRCResultRegM = 0x21
+        CRCResultRegL = 0x22
+        ModWidthReg = 0x24
+        RFCfgReg = 0x26
+        GsNReg = 0x27
+        CWGsCfgReg = 0x28
+        ModGsCfgReg = 0x29
+        DivIrqReg = 0x05
+
         PCD_IDLE = 0x00
         PCD_AUTHENT = 0x0E
         PCD_RECEIVE = 0x08
@@ -314,12 +351,15 @@ class RFIDReader:
                         if status == self.rfid.MI_OK:
                                 return status, uid
                 return status, []
-        
+
         def authenticate_card(self, uid: List[int]) -> Tuple[int, str]:
                 """
                 Authenticate an RFID card based on its UID.
                 """
-                card_uid_tuple = tuple(uid)
+                if len(uid) != 5:
+                    return self.rfid.MI_ERR, ""
+                # Create tuple with explicit length
+                card_uid_tuple: Tuple[int, int, int, int, int] = (uid[0], uid[1], uid[2], uid[3], uid[4])
                 card_info = AUTHORIZED_CARDS.get(card_uid_tuple)
                 if card_info:
                         return self.rfid.MI_OK, card_info["role"]

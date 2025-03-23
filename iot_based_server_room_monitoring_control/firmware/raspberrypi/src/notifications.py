@@ -15,6 +15,7 @@ Dependencies:
     - twilio (install via: pip install twilio)
     - requests (install via: pip install requests)
     - Standard Python libraries: smtplib, email
+    - python-dotenv (install via: pip install python-dotenv)
 
 Configuration:
     - Set the required environment variables for Twilio, SMTP, and FCM credentials.
@@ -23,14 +24,18 @@ Configuration:
 import logging
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 from twilio.rest import Client
 import smtplib
 from email.message import EmailMessage
 import requests
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Configure logging for debugging and operational visibility
 logging.basicConfig(level=logging.INFO,
-                                        format='%(asctime)s - %(levelname)s - %(message)s')
+                   format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Twilio Credentials (for SMS/MMS) ---
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
@@ -40,7 +45,7 @@ TWILIO_TO_NUMBER = os.getenv("TWILIO_TO_NUMBER")
 
 # --- Email SMTP Configuration ---
 SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 EMAIL_FROM = os.getenv("EMAIL_FROM")
@@ -49,6 +54,9 @@ EMAIL_TO = os.getenv("EMAIL_TO")
 # --- Firebase Cloud Messaging (FCM) Configuration ---
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY")
 FCM_DEVICE_TOKEN = os.getenv("FCM_DEVICE_TOKEN")
+
+# --- Cloud Storage Configuration ---
+CLOUD_STORAGE_URL = os.getenv("CLOUD_STORAGE_URL")
 
 def send_sms_alert(message, media_url=None):
         """

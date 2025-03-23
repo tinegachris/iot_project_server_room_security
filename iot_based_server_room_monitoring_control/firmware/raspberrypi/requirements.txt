@@ -1,0 +1,7 @@
+RPi.GPIO>=0.7.1
+spidev>=3.5
+gpiozero>=2.0.1
+picamera>=1.13
+requests>=2.31.0
+twilio>=8.10.0
+python-dotenv>=1.0.0
