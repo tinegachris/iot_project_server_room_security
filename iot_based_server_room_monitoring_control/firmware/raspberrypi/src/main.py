@@ -1,4 +1,12 @@
-#!/home/admin/iot_project_server_room_security/venv/bin/python3
+#!/usr/bin/env python3
+
+"""
+Main script for running the IoT-based Server Room Monitoring System.
+This script initializes the sensor manager, camera, and notification modules.
+It then continuously monitors the server room for intrusion events and unauthorized access.
+Upon detecting an event, it records a video clip and sends an alert to the system administrator.
+"""
+
 import time
 import logging
 import signal
