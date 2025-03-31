@@ -1,15 +1,17 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
+import json
 from .database import get_db
-from .controllers import process_alert_and_event
+from .controllers import process_alert_and_event, get_sensor_status, execute_control_command
 from .models import LogEntry as DBLogEntry
-from .schemas import LogEntry, Alert, ControlCommand
+from .schemas import LogEntry, Alert, ControlCommand, SensorStatus, SystemHealth
 from .rate_limit import rate_limit
 from .auth import get_current_user
+from ..config.config import config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,22 +23,36 @@ router = APIRouter()
 RATE_LIMIT_REQUESTS = 100  # requests per minute
 RATE_LIMIT_WINDOW = 60    # seconds
 
-@router.get("/status")
+@router.get("/status", response_model=SystemHealth)
 @rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
-async def get_status(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     GET /status endpoint returns the current status of the server room.
     Includes system health metrics and sensor status.
     """
     try:
         # Get system health metrics
-        system_status = await get_system_health()
-        return {
-            "status": "normal",
-            "timestamp": datetime.now(),
-            "system_health": system_status,
-            "user": current_user["username"]
-        }
+        system_status = await get_sensor_status(db)
+
+        # Add user context
+        system_status["user"] = current_user["username"]
+        system_status["timestamp"] = datetime.now()
+
+        # Log status check
+        background_tasks.add_task(
+            process_alert_and_event,
+            "status_check",
+            f"Status check by {current_user['username']}",
+            None,
+            current_user["username"]
+        )
+
+        return system_status
     except Exception as e:
         logger.error(f"Error getting system status: {e}")
         raise HTTPException(
@@ -61,7 +77,7 @@ async def get_logs(
     """
     try:
         query = db.query(DBLogEntry)
-        
+
         # Apply filters
         if event_type:
             query = query.filter(DBLogEntry.event_type == event_type)
@@ -69,11 +85,11 @@ async def get_logs(
             query = query.filter(DBLogEntry.timestamp >= start_date)
         if end_date:
             query = query.filter(DBLogEntry.timestamp <= end_date)
-            
+
         # Apply pagination
         total = query.count()
         logs = query.offset(skip).limit(limit).all()
-        
+
         return {
             "logs": logs,
             "total": total,
@@ -92,6 +108,7 @@ async def get_logs(
 async def post_alert(
     request: Request,
     alert: Alert,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -106,7 +123,7 @@ async def post_alert(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Alert message is required"
             )
-            
+
         # Process the alert
         log_entry = await process_alert_and_event(
             db,
@@ -115,10 +132,10 @@ async def post_alert(
             alert.video_url,
             current_user["username"]
         )
-        
+
         # Log the alert
         logger.info(f"Alert created by {current_user['username']}: {alert.message}")
-        
+
         return {
             "message": "Alert processed successfully",
             "log_id": log_entry.id,
@@ -138,6 +155,7 @@ async def post_alert(
 async def post_control(
     request: Request,
     command: ControlCommand,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -147,32 +165,37 @@ async def post_control(
     """
     try:
         # Validate command
-        if command.action not in ["lock", "unlock", "restart_system", "test_sensors"]:
+        valid_actions = ["lock", "unlock", "restart_system", "test_sensors", "capture_image", "record_video"]
+        if command.action not in valid_actions:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid command action"
+                detail=f"Invalid command action. Must be one of: {', '.join(valid_actions)}"
             )
-            
+
         # Check user permissions
         if command.action in ["restart_system"] and not current_user.get("is_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions for this command"
             )
-            
-        # Execute command
+
+       # Execute command
         result = await execute_control_command(command.action)
-        
+
         # Log the command execution
         log_entry = DBLogEntry(
             event_type="control_command",
             timestamp=datetime.now(),
-            details=f"Command '{command.action}' executed by {current_user['username']}",
+            details=json.dumps({
+                "command": command.action,
+                "user": current_user["username"],
+                "result": result
+            }),
             user_id=current_user["id"]
         )
         db.add(log_entry)
         db.commit()
-        
+
         return {
             "message": f"Command '{command.action}' executed successfully",
             "timestamp": datetime.now(),
@@ -211,23 +234,3 @@ async def get_system_health():
     except Exception as e:
         logger.error(f"Error getting system health: {e}")
         return {"error": "Failed to retrieve system health metrics"}
-
-async def execute_control_command(action: str):
-    """
-    Execute a control command and return the result.
-    """
-    try:
-        # This would be implemented to execute actual control commands
-        if action == "lock":
-            return {"status": "success", "message": "Door locked"}
-        elif action == "unlock":
-            return {"status": "success", "message": "Door unlocked"}
-        elif action == "restart_system":
-            return {"status": "success", "message": "System restart initiated"}
-        elif action == "test_sensors":
-            return {"status": "success", "message": "Sensor test completed"}
-        else:
-            raise ValueError(f"Unknown command: {action}")
-    except Exception as e:
-        logger.error(f"Error executing command {action}: {e}")
-        raise
