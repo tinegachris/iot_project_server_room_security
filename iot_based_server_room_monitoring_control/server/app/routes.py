@@ -12,6 +12,7 @@ from .schemas import LogEntry, Alert, ControlCommand, SensorStatus, SystemHealth
 from .rate_limit import rate_limit
 from .auth import get_current_user
 from ..config.config import config
+from .raspberry_pi_client import RaspberryPiClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -234,3 +235,165 @@ async def get_system_health():
     except Exception as e:
         logger.error(f"Error getting system health: {e}")
         return {"error": "Failed to retrieve system health metrics"}
+
+@router.get("/sensors/{sensor_type}", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_sensor_data(
+    sensor_type: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /sensors/{sensor_type} endpoint returns data from a specific sensor.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            sensor_data = await client.get_sensor_data(sensor_type)
+            
+            # Log sensor data retrieval
+            background_tasks.add_task(
+                process_alert_and_event,
+                "sensor_data",
+                f"Sensor data retrieved for {sensor_type}",
+                None,
+                current_user["username"]
+            )
+            
+            return sensor_data
+    except Exception as e:
+        logger.error(f"Error getting sensor data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sensor data for {sensor_type}"
+        )
+
+@router.get("/camera/status", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_camera_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /camera/status endpoint returns camera status and settings.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            camera_status = await client.get_camera_status()
+            
+            # Log camera status check
+            background_tasks.add_task(
+                process_alert_and_event,
+                "camera_status",
+                "Camera status retrieved",
+                None,
+                current_user["username"]
+            )
+            
+            return camera_status
+    except Exception as e:
+        logger.error(f"Error getting camera status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve camera status"
+        )
+
+@router.get("/rfid/status", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_rfid_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /rfid/status endpoint returns RFID reader status and last read card.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            rfid_status = await client.get_rfid_status()
+            
+            # Log RFID status check
+            background_tasks.add_task(
+                process_alert_and_event,
+                "rfid_status",
+                "RFID status retrieved",
+                None,
+                current_user["username"]
+            )
+            
+            return rfid_status
+    except Exception as e:
+        logger.error(f"Error getting RFID status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve RFID status"
+        )
+
+@router.post("/camera/capture")
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def capture_image(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    POST /camera/capture endpoint triggers image capture.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            result = await client.execute_command("capture_image")
+            
+            # Log image capture
+            background_tasks.add_task(
+                process_alert_and_event,
+                "image_capture",
+                "Image captured",
+                result.get("image_url"),
+                current_user["username"]
+            )
+            
+            return result
+    except Exception as e:
+        logger.error(f"Error capturing image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to capture image"
+        )
+
+@router.post("/camera/record")
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def record_video(
+    duration: int = 30,
+    request: Request = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    POST /camera/record endpoint triggers video recording.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            result = await client.execute_command("record_video", {"duration": duration})
+            
+            # Log video recording
+            background_tasks.add_task(
+                process_alert_and_event,
+                "video_recording",
+                f"Video recorded for {duration} seconds",
+                result.get("video_url"),
+                current_user["username"]
+            )
+            
+            return result
+    except Exception as e:
+        logger.error(f"Error recording video: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record video"
+        )
