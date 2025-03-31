@@ -2,147 +2,135 @@
 """
 motion.py
 
-This module handles
-  - A PIR motion sensor (to detect motion)
-  - A door sensor (e.g., a reed switch on a door)
-  - A window sensor (e.g., a reed switch on a window)
+This module handles various sensors for server room monitoring:
+- PIR motion sensor for motion detection
+- Door sensor (reed switch) for door state
+- Window sensor (reed switch) for window state
 
+Each sensor has an associated LED indicator for visual feedback.
 """
 
 import logging
 import argparse
+from dataclasses import dataclass
+from typing import Optional, Type, Callable
 from gpiozero import MotionSensor as PIRMotionSensor
 from gpiozero import Button as OpenCloseSensor
 from gpiozero import LED
 from time import sleep
-from typing import Type
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+@dataclass
+class SensorConfig:
+    """Configuration for a sensor."""
+    gpio_pin: int
+    led_pin: int
+    name: str
+    verbose: bool
 
 class SensorHandler:
     """Base class to handle sensors with LEDs."""
 
-    def __init__(self, gpio_pin: int, led_pin: int, verbose: bool):
-        if verbose:
-            logging.getLogger().setLevel(logging.DEBUG)
+    def __init__(self, config: SensorConfig):
+        """Initialize the sensor handler with configuration."""
+        if config.verbose:
+            logger.setLevel(logging.DEBUG)
 
-        logging.info(f"[{self.__class__.__name__}]: Initializing - GPIO_PIN: {gpio_pin}, LED_PIN: {led_pin}, VERBOSE: {verbose}")
+        logger.info("[%s]: Initializing - GPIO_PIN: %d, LED_PIN: %d",
+                   config.name, config.gpio_pin, config.led_pin)
 
-        self.sensor = self.create_sensor(gpio_pin)
-        self.indicator_led = LED(led_pin)
+        self.config = config
+        self.sensor = self.create_sensor(config.gpio_pin)
+        self.indicator_led = LED(config.led_pin)
+        self.setup_callbacks()
 
     def create_sensor(self, gpio_pin: int) -> Type:
         """Create the sensor instance. To be implemented by subclasses."""
         raise NotImplementedError
-    
-    def cleanup(self) -> None:
-        """Clean up the resources used by the sensor. To be implemented by subclasses."""
+
+    def setup_callbacks(self) -> None:
+        """Setup sensor callbacks. To be implemented by subclasses."""
         raise NotImplementedError
+
+    def cleanup(self) -> None:
+        """Clean up the resources used by the sensor."""
+        try:
+            self.sensor.close()
+            logger.info("[%s]: Cleanup completed", self.config.name)
+        except Exception as e:
+            logger.error("[%s]: Error during cleanup: %s", self.config.name, e)
 
 class MotionSensorHandler(SensorHandler):
     """Class to handle motion detection using a PIR sensor."""
 
-    def __init__(self, gpio_pin: int, verbose: bool):
-        super().__init__(gpio_pin, led_pin=22, verbose=verbose)
+    def create_sensor(self, gpio_pin: int) -> PIRMotionSensor:
+        """Create a PIR motion sensor instance."""
+        return PIRMotionSensor(gpio_pin, queue_len=1, sample_rate=1)
+
+    def setup_callbacks(self) -> None:
+        """Setup motion detection callbacks."""
         self.sensor.when_motion = self.on_motion
         self.sensor.when_no_motion = self.on_no_motion
 
-    def create_sensor(self, gpio_pin: int) -> PIRMotionSensor:
-        return PIRMotionSensor(gpio_pin, queue_len=1, sample_rate=1)
-
     def on_motion(self) -> None:
         """Callback for when motion is detected."""
-        logging.info("[Motion]: Motion detected!")
+        logger.info("[%s]: Motion detected!", self.config.name)
         self.indicator_led.on()
 
     def on_no_motion(self) -> None:
         """Callback for when no motion is detected."""
-        logging.info("[Motion]: No motion detected!")
+        logger.info("[%s]: No motion detected!", self.config.name)
         self.indicator_led.off()
-        
+
     def check_motion(self) -> bool:
-        """Check the status of the motion sensor.
-
-        Returns:
-            bool: True if motion is detected, otherwise False.
-        """
+        """Check the status of the motion sensor."""
         status = self.sensor.motion_detected
-        logging.debug(f"[Motion]: Check motion status - {'Detected' if status else 'Not detected'}")
+        logger.debug("[%s]: Check motion status - %s",
+                    self.config.name, 'Detected' if status else 'Not detected')
         return status
-    
-    def cleanup(self) -> None:
-        """Clean up the resources used by the motion sensor."""
-        self.sensor.close()
 
-class DoorSensorHandler(SensorHandler):
+class OpenCloseSensorHandler(SensorHandler):
+    """Base class for door and window sensors using reed switches."""
+
+    def create_sensor(self, gpio_pin: int) -> OpenCloseSensor:
+        """Create a reed switch sensor instance."""
+        return OpenCloseSensor(gpio_pin, pull_up=True, bounce_time=0.1)
+
+    def setup_callbacks(self) -> None:
+        """Setup open/close detection callbacks."""
+        self.sensor.when_pressed = self.on_open
+        self.sensor.when_released = self.on_close
+
+    def on_open(self) -> None:
+        """Callback for when the sensor is triggered (opened)."""
+        logger.info("[%s]: Opened!", self.config.name)
+        self.indicator_led.on()
+
+    def on_close(self) -> None:
+        """Callback for when the sensor is released (closed)."""
+        logger.info("[%s]: Closed!", self.config.name)
+        self.indicator_led.off()
+
+    def check_state(self) -> bool:
+        """Check the current state of the sensor."""
+        status = self.sensor.is_pressed
+        logger.debug("[%s]: Check state - %s",
+                    self.config.name, 'Opened' if status else 'Closed')
+        return status
+
+class DoorSensorHandler(OpenCloseSensorHandler):
     """Class to handle door sensors using reed switches."""
+    pass
 
-    def __init__(self, gpio_pin: int, verbose: bool):
-        super().__init__(gpio_pin, led_pin=23, verbose=verbose)
-        self.sensor.when_pressed = self.on_open
-        self.sensor.when_released = self.on_close
-
-    def create_sensor(self, gpio_pin: int) -> OpenCloseSensor:
-        return OpenCloseSensor(gpio_pin, pull_up=True, bounce_time=0.1)
-
-    def on_open(self) -> None:
-        """Callback for when the door is opened."""
-        logging.info("[DoorSensor]: Door opened!")
-        self.indicator_led.on()
-
-    def on_close(self) -> None:
-        """Callback for when the door is closed."""
-        logging.info("[DoorSensor]: Door closed!")
-        self.indicator_led.off()
-        
-    def check_door(self) -> bool:
-        """Check the status of the door sensor.
-
-        Returns:
-            bool: True if the door sensor is triggered (opened),
-                  otherwise False (closed).
-        """
-        status = self.sensor.is_pressed
-        logging.debug(f"[DoorSensor]: Check door status - {'Opened' if status else 'Closed'}")
-        return status
-    
-    def cleanup(self) -> None:
-        """Clean up the resources used by the door sensor."""
-        self.sensor.close()
-
-class WindowSensorHandler(SensorHandler):
+class WindowSensorHandler(OpenCloseSensorHandler):
     """Class to handle window sensors using reed switches."""
-
-    def __init__(self, gpio_pin: int, verbose: bool):
-        super().__init__(gpio_pin, led_pin=24, verbose=verbose)
-        self.sensor.when_pressed = self.on_open
-        self.sensor.when_released = self.on_close
-
-    def create_sensor(self, gpio_pin: int) -> OpenCloseSensor:
-        return OpenCloseSensor(gpio_pin, pull_up=True, bounce_time=0.1)
-
-    def on_open(self) -> None:
-        """Callback for when the window is opened."""
-        logging.info("[WindowSensor]: Window opened!")
-        self.indicator_led.on()
-
-    def on_close(self) -> None:
-        """Callback for when the window is closed."""
-        logging.info("[WindowSensor]: Window closed!")
-        self.indicator_led.off()
-
-    def check_window(self) -> bool:
-        """Check the status of the window sensor.
-
-        Returns:
-            bool: True if the window sensor is triggered (opened),
-                  otherwise False (closed).
-        """
-        status = self.sensor.is_pressed
-        logging.debug(f"[WindowSensor]: Check window status - {'Opened' if status else 'Closed'}")
-        return status
-    
-    def cleanup(self) -> None:
-        """Clean up the resources used by the window sensor."""
-        self.sensor.close()
+    pass
 
 def main() -> None:
     """Main function to initialize sensor handlers and start monitoring."""
@@ -150,18 +138,23 @@ def main() -> None:
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
     # Initialize sensor handlers
-    motion_sensor = MotionSensorHandler(gpio_pin=4, verbose=args.verbose)
-    door_sensor = DoorSensorHandler(gpio_pin=17, verbose=args.verbose)
-    window_sensor = WindowSensorHandler(gpio_pin=27, verbose=args.verbose)
+    sensors = [
+        MotionSensorHandler(SensorConfig(4, 22, "Motion", args.verbose)),
+        DoorSensorHandler(SensorConfig(17, 23, "Door", args.verbose)),
+        WindowSensorHandler(SensorConfig(27, 24, "Window", args.verbose))
+    ]
 
     try:
         while True:
             sleep(1)
     except KeyboardInterrupt:
-        logging.info("Exiting...")
+        logger.info("Exiting...")
+    except Exception as e:
+        logger.error("Unexpected error: %s", e)
+    finally:
+        for sensor in sensors:
+            sensor.cleanup()
 
 if __name__ == "__main__":
     main()
