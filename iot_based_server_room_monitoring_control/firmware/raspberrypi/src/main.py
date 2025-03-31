@@ -10,6 +10,7 @@ Dependencies:
     - sensors.py: For sensor management and monitoring
     - camera.py: For video surveillance
     - notifications.py: For alert handling
+    - python-dotenv: For environment variable management
 """
 
 import time
@@ -17,18 +18,23 @@ import logging
 import signal
 import sys
 import json
+import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, ClassVar
+from typing import Dict, Any, Optional, ClassVar, Tuple
+from dotenv import load_dotenv
 
 from sensors import SensorManager
-from camera import CameraManager
-from notifications import NotificationManager, create_intrusion_alert
+from camera import CameraManager, CameraConfig
+from notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.getenv('LOG_LEVEL', 'INFO'),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('server_room_monitor.log'),
@@ -40,11 +46,28 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SystemConfig:
     """Configuration for the monitoring system."""
-    poll_interval: int = 5
-    video_duration: int = 10
-    health_check_interval: int = 300  # 5 minutes
-    max_retries: int = 3
-    storage_threshold_gb: int = 10
+    poll_interval: int = int(os.getenv('POLL_INTERVAL', '5'))
+    video_duration: int = int(os.getenv('VIDEO_DURATION', '10'))
+    health_check_interval: int = int(os.getenv('HEALTH_CHECK_INTERVAL', '300'))  # 5 minutes
+    max_retries: int = int(os.getenv('MAX_RETRIES', '3'))
+    storage_threshold_gb: int = int(os.getenv('STORAGE_THRESHOLD_GB', '10'))
+    camera_config: Optional[CameraConfig] = None
+
+    @classmethod
+    def from_env(cls) -> 'SystemConfig':
+        """Create SystemConfig from environment variables."""
+        resolution_str = os.getenv('CAMERA_RESOLUTION', '1920x1080').split('x')
+        resolution: Tuple[int, int] = (int(resolution_str[0]), int(resolution_str[1]))
+
+        camera_config = CameraConfig(
+            resolution=resolution,
+            framerate=int(os.getenv('VIDEO_FPS', '30')),
+            rotation=int(os.getenv('CAMERA_ROTATION', '0')),
+            brightness=int(os.getenv('CAMERA_BRIGHTNESS', '50')),
+            output_dir=os.getenv('VIDEO_OUTPUT_DIR', '/home/pi/Videos'),
+            image_dir=os.getenv('IMAGE_OUTPUT_DIR', '/home/pi/Pictures')
+        )
+        return cls(camera_config=camera_config)
 
 class ServerRoomMonitor:
     """Main class for server room monitoring system."""
@@ -60,17 +83,17 @@ class ServerRoomMonitor:
         self.setup_signal_handlers()
 
     def _load_config(self, config_path: str) -> SystemConfig:
-        """Load system configuration from file."""
+        """Load system configuration from file and environment variables."""
         try:
             config_file = Path(config_path)
             if config_file.exists():
                 with open(config_file) as f:
                     config_data = json.load(f)
                     return SystemConfig(**config_data)
-            return SystemConfig()
+            return SystemConfig.from_env()
         except Exception as e:
             logger.error("Error loading config: %s", e)
-            return SystemConfig()
+            return SystemConfig.from_env()
 
     def setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -103,7 +126,8 @@ class ServerRoomMonitor:
                 health_report = {
                     'timestamp': current_time.isoformat(),
                     'sensor_status': sensor_status,
-                    'storage_status': storage_status
+                    'storage_status': storage_status,
+                    'system_uptime': self.get_system_uptime()
                 }
 
                 # Send health report
@@ -119,6 +143,16 @@ class ServerRoomMonitor:
                 logger.info("Health check completed successfully")
         except Exception as e:
             logger.error("Error during health check: %s", e)
+
+    def get_system_uptime(self) -> str:
+        """Get system uptime."""
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.readline().split()[0])
+            return str(timedelta(seconds=int(uptime_seconds)))
+        except Exception as e:
+            logger.error("Error getting system uptime: %s", e)
+            return "unknown"
 
     def check_storage_space(self) -> Dict[str, Any]:
         """Check available storage space."""
@@ -151,7 +185,7 @@ class ServerRoomMonitor:
         try:
             # Initialize system components
             self.sensor_manager = SensorManager(verbose=True)
-            self.camera_manager = CameraManager()
+            self.camera_manager = CameraManager(self.config.camera_config)
             self.notification_manager = NotificationManager()
 
             # Start sensor monitoring
@@ -203,8 +237,12 @@ class ServerRoomMonitor:
 
 def main() -> None:
     """Entry point for the monitoring system."""
-    monitor = ServerRoomMonitor()
-    monitor.run()
+    try:
+        monitor = ServerRoomMonitor()
+        monitor.run()
+    except Exception as e:
+        logger.critical("Failed to start monitoring system: %s", e)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
