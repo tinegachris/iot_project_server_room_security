@@ -45,6 +45,12 @@ cloud_storage:
   timeout: 30
 
 raspberry_pi:
+  api_url: "${RASPBERRY_PI_API_URL}"
+  api_key: "${RASPBERRY_PI_API_KEY}"
+  retry_count: 3
+  retry_delay: 1
+  timeout: 30
+
   # GPIO Pin Configuration
   pins:
     motion_sensor: ${MOTION_SENSOR_PIN}
@@ -74,6 +80,8 @@ raspberry_pi:
     image_quality: 85
     video_codec: "h264"
     video_bitrate: "5000000"
+    max_storage_gb: ${MAX_STORAGE_GB}
+    retention_days: ${VIDEO_RETENTION_DAYS}
 
   # RFID Configuration
   rfid:
@@ -90,16 +98,21 @@ raspberry_pi:
       - uid: [20, 38, 121, 207, 132]
         name: "Card C"
         role: "maintenance"
+    max_retries: 3
+    timeout: 1.0
 
   # Sensor Settings
   sensors:
     motion:
       sensitivity: ${MOTION_SENSITIVITY}
       trigger_delay: ${MOTION_TRIGGER_DELAY}
+      debounce_time: ${MOTION_DEBOUNCE_TIME}
     door:
       debounce_time: ${DOOR_DEBOUNCE_TIME}
+      trigger_on_open: true
     window:
       debounce_time: ${WINDOW_DEBOUNCE_TIME}
+      trigger_on_open: true
 
 monitoring:
   health_check_interval: ${HEALTH_CHECK_INTERVAL}
@@ -109,6 +122,8 @@ monitoring:
   max_video_retention_days: ${MAX_VIDEO_RETENTION_DAYS}
   event_cooldown: ${EVENT_COOLDOWN}
   cleanup_interval: ${CLEANUP_INTERVAL}
+  heartbeat_interval: ${HEARTBEAT_INTERVAL}
+  offline_threshold: ${OFFLINE_THRESHOLD}
 
 security:
   jwt_secret: "${JWT_SECRET}"
@@ -119,3 +134,5 @@ security:
     requests: 100
     window: 60
   allowed_ips: "${ALLOWED_IPS}"
+  api_key_header: "X-API-Key"
+  api_key_required: true
