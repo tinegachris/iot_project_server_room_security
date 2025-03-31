@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from motion import MotionSensorHandler, DoorSensorHandler, WindowSensorHandler, SensorConfig
 from rfid import RFIDReader, RFIDStatus, CardInfo
 from camera import CameraManager, CameraConfig
+from notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
 
 # Configure logging
 logging.basicConfig(
@@ -45,12 +46,13 @@ class SensorManager:
         self._last_event_time = datetime.datetime.now()
         self._event_cooldown = 30  # seconds
         self._running = True
+        self._notification_manager = NotificationManager()
 
         # Initialize sensors with proper configuration
         try:
             # Motion sensor configuration
             motion_config = SensorConfig(
-                gpio_pin=int(os.getenv("MOTION_GPIO_PIN", "4")),
+                gpio_pin=int(os.getenv("MOTION_SENSOR_PIN", "4")),
                 led_pin=int(os.getenv("MOTION_LED_PIN", "22")),
                 name="Motion",
                 verbose=verbose
@@ -59,7 +61,7 @@ class SensorManager:
 
             # Door sensor configuration
             door_config = SensorConfig(
-                gpio_pin=int(os.getenv("DOOR_GPIO_PIN", "17")),
+                gpio_pin=int(os.getenv("DOOR_SENSOR_PIN", "17")),
                 led_pin=int(os.getenv("DOOR_LED_PIN", "23")),
                 name="Door",
                 verbose=verbose
@@ -68,7 +70,7 @@ class SensorManager:
 
             # Window sensor configuration
             window_config = SensorConfig(
-                gpio_pin=int(os.getenv("WINDOW_GPIO_PIN", "27")),
+                gpio_pin=int(os.getenv("WINDOW_SENSOR_PIN", "27")),
                 led_pin=int(os.getenv("WINDOW_LED_PIN", "24")),
                 name="Window",
                 verbose=verbose
@@ -81,7 +83,7 @@ class SensorManager:
             # Camera initialization with default configuration
             self._camera = CameraManager()
 
-           # Initialize sensor status
+            # Initialize sensor status
             self._update_sensor_status('motion', False)
             self._update_sensor_status('door', False)
             self._update_sensor_status('window', False)
@@ -102,7 +104,7 @@ class SensorManager:
 
                 if motion_detected:
                     logger.info("Motion detected in server room")
-                    self._handle_intrusion_event()
+                    self._handle_intrusion_event("motion_detected", "Motion detected in server room")
 
                 time.sleep(1)
             except Exception as e:
@@ -119,7 +121,7 @@ class SensorManager:
 
                 if door_open:
                     logger.info("Door opened in server room")
-                    self._handle_intrusion_event()
+                    self._handle_intrusion_event("door_opened", "Door opened in server room")
 
                 time.sleep(1)
             except Exception as e:
@@ -136,7 +138,7 @@ class SensorManager:
 
                 if window_open:
                     logger.info("Window opened in server room")
-                    self._handle_intrusion_event()
+                    self._handle_intrusion_event("window_opened", "Window opened in server room")
 
                 time.sleep(1)
             except Exception as e:
@@ -164,7 +166,7 @@ class SensorManager:
                         logger.info("RFID access granted: %s (%s)", uid_str, role)
                     else:
                         logger.warning("Unauthorized RFID access: %s", uid_str)
-                        self._handle_unauthorized_access()
+                        self._handle_unauthorized_access(uid_str)
 
                 time.sleep(0.5)  # Shorter sleep for more responsive RFID reading
             except Exception as e:
@@ -172,8 +174,8 @@ class SensorManager:
                 logger.error("RFID error: %s", e)
                 time.sleep(5)
 
-    def _handle_intrusion_event(self) -> None:
-        """Handle intrusion events by capturing images and videos."""
+    def _handle_intrusion_event(self, event_type: str, message: str) -> None:
+        """Handle intrusion events by capturing media and sending notifications."""
         current_time = datetime.datetime.now()
         if (current_time - self._last_event_time).total_seconds() < self._event_cooldown:
             logger.debug("Intrusion event cooldown active, skipping media capture")
@@ -192,13 +194,26 @@ class SensorManager:
                 'last_video_url': video_url
             })
 
+            # Create and send alert
+            alert = create_intrusion_alert(
+                event_type=event_type,
+                message=message,
+                media_url=image_url,
+                sensor_data={
+                    'location': event_type.split('_')[0],
+                    'image_url': image_url,
+                    'video_url': video_url
+                }
+            )
+            self._notification_manager.send_alert(alert)
+
             logger.warning("Intrusion detected! Media captured: %s, %s", image_path, video_path)
             self._last_event_time = current_time
         except Exception as e:
             self._update_sensor_status('camera', False, str(e))
-            logger.error("Failed to capture intrusion media: %s", e)
+            logger.error("Failed to handle intrusion event: %s", e)
 
-    def _handle_unauthorized_access(self) -> None:
+    def _handle_unauthorized_access(self, uid: str) -> None:
         """Handle unauthorized access events."""
         current_time = datetime.datetime.now()
         if (current_time - self._last_event_time).total_seconds() < self._event_cooldown:
@@ -219,11 +234,20 @@ class SensorManager:
                 'event_type': 'unauthorized_access'
             })
 
+            # Create and send alert
+            alert = create_rfid_alert(
+                event_type="unauthorized_access",
+                message="Unauthorized RFID access attempt",
+                uid=uid,
+                media_url=image_url
+            )
+            self._notification_manager.send_alert(alert)
+
             logger.warning("Unauthorized access! Media captured: %s, %s", image_path, video_path)
             self._last_event_time = current_time
         except Exception as e:
             self._update_sensor_status('camera', False, str(e))
-            logger.error("Failed to capture unauthorized access media: %s", e)
+            logger.error("Failed to handle unauthorized access event: %s", e)
 
     def _update_sensor_status(self, sensor_name: str, is_active: bool, error: Optional[str] = None, data: Optional[Dict[str, Any]] = None) -> None:
         """Update the status of a sensor."""
