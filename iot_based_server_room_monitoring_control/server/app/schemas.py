@@ -45,13 +45,61 @@ class User(UserBase):
     class Config:
         orm_mode = True
 
+class SensorType(str, Enum):
+    MOTION = "motion"
+    DOOR = "door"
+    WINDOW = "window"
+    RFID = "rfid"
+    CAMERA = "camera"
+
+class SensorStatus(BaseModel):
+    name: str
+    is_active: bool
+    last_check: datetime
+    error: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    location: Optional[str] = None
+
+class CameraStatus(BaseModel):
+    is_active: bool
+    resolution: str
+    framerate: int
+    rotation: int
+    brightness: int
+    last_capture: Optional[datetime] = None
+    last_video: Optional[datetime] = None
+    error: Optional[str] = None
+
+class RFIDStatus(BaseModel):
+    is_active: bool
+    last_read: Optional[datetime] = None
+    last_card: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    authorized_cards: Optional[List[Dict[str, Any]]] = None
+
+class SensorData(BaseModel):
+    type: SensorType
+    status: SensorStatus
+    data: Optional[Dict[str, Any]] = None
+    timestamp: datetime = Field(default_factory=datetime.now)
+
 class Alert(BaseModel):
+    id: Optional[int] = None
     message: str
-    video_url: Optional[HttpUrl] = None
-    severity: AlertSeverity = AlertSeverity.HIGH
+    video_url: Optional[str] = None
+    event_timestamp: datetime = Field(default_factory=datetime.now)
+    channels: List[str] = ["email"]
+    created_by: Optional[int] = None
+    status: str = "pending"
+    sent_at: Optional[datetime] = None
+    severity: AlertSeverity = AlertSeverity.MEDIUM
     sensor_data: Optional[Dict[str, Any]] = None
-    channels: Optional[List[str]] = None
     acknowledged: bool = False
+    acknowledged_by: Optional[int] = None
+    acknowledged_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
 
 class AlertResponse(Alert):
     id: int
@@ -66,40 +114,31 @@ class AlertResponse(Alert):
         orm_mode = True
 
 class ControlCommand(BaseModel):
-    action: str = Field(..., description="Action to execute (lock, unlock, restart_system, test_sensors, capture_image, record_video)")
+    action: str
     parameters: Optional[Dict[str, Any]] = None
 
 class LogEntry(BaseModel):
-    id: int
+    id: Optional[int] = None
     event_type: str
     timestamp: datetime
     details: Dict[str, Any]
-    user_id: int
-    video_url: Optional[HttpUrl] = None
+    user_id: Optional[int] = None
+    video_url: Optional[str] = None
     severity: Severity = Severity.INFO
     source: str
 
     class Config:
         orm_mode = True
 
-class SensorStatus(BaseModel):
-    name: str
-    is_active: bool
-    last_check: datetime
-    error: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
-    location: Optional[str] = None
-
 class SystemHealth(BaseModel):
     status: str
-    timestamp: datetime
-    user: str
     sensors: Dict[str, SensorStatus]
     storage: Dict[str, Any]
     uptime: str
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
     errors: Optional[List[str]] = None
+    raspberry_pi: Dict[str, Any]
 
 class AccessLog(BaseModel):
     id: int
@@ -168,3 +207,19 @@ class RaspberryPiStatus(BaseModel):
     firmware_version: str
     is_online: bool = True
     last_heartbeat: datetime
+
+class CameraCommand(BaseModel):
+    action: str
+    duration: Optional[int] = 30
+    resolution: Optional[str] = None
+    quality: Optional[int] = 85
+
+class RFIDCommand(BaseModel):
+    action: str
+    card_uid: Optional[List[int]] = None
+    role: Optional[str] = None
+
+class SensorCommand(BaseModel):
+    action: str
+    sensor_type: SensorType
+    parameters: Optional[Dict[str, Any]] = None
