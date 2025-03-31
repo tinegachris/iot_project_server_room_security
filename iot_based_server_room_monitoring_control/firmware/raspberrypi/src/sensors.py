@@ -33,6 +33,26 @@ class SensorStatus:
     last_check: datetime.datetime
     error: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+    location: Optional[str] = None
+    type: Optional[str] = None  # motion, door, window, rfid, camera
+    firmware_version: Optional[str] = None
+    last_event: Optional[datetime.datetime] = None
+    event_count: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert sensor status to dictionary format."""
+        return {
+            "name": self.name,
+            "is_active": self.is_active,
+            "last_check": self.last_check.isoformat(),
+            "error": self.error,
+            "data": self.data,
+            "location": self.location,
+            "type": self.type,
+            "firmware_version": self.firmware_version,
+            "last_event": self.last_event.isoformat() if self.last_event else None,
+            "event_count": self.event_count
+        }
 
 class SensorManager:
     """Manages all sensors and provides unified monitoring interface."""
@@ -260,16 +280,11 @@ class SensorManager:
                 data=data
             )
 
-    def get_sensor_status(self) -> Dict:
+    def get_sensor_status(self) -> Dict[str, Any]:
         """Get the current status of all sensors."""
         with self._lock:
             return {
-                name: {
-                    'is_active': status.is_active,
-                    'last_check': status.last_check.isoformat(),
-                    'error': status.error,
-                    'data': status.data
-                }
+                name: status.to_dict()
                 for name, status in self._sensor_status.items()
             }
 
