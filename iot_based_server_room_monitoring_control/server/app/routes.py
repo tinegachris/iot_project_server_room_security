@@ -251,7 +251,7 @@ async def get_sensor_data(
     try:
         async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
             sensor_data = await client.get_sensor_data(sensor_type)
-            
+
             # Log sensor data retrieval
             background_tasks.add_task(
                 process_alert_and_event,
@@ -260,7 +260,7 @@ async def get_sensor_data(
                 None,
                 current_user["username"]
             )
-            
+
             return sensor_data
     except Exception as e:
         logger.error(f"Error getting sensor data: {e}")
@@ -283,7 +283,7 @@ async def get_camera_status(
     try:
         async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
             camera_status = await client.get_camera_status()
-            
+
             # Log camera status check
             background_tasks.add_task(
                 process_alert_and_event,
@@ -292,7 +292,7 @@ async def get_camera_status(
                 None,
                 current_user["username"]
             )
-            
+
             return camera_status
     except Exception as e:
         logger.error(f"Error getting camera status: {e}")
@@ -315,7 +315,7 @@ async def get_rfid_status(
     try:
         async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
             rfid_status = await client.get_rfid_status()
-            
+
             # Log RFID status check
             background_tasks.add_task(
                 process_alert_and_event,
@@ -324,7 +324,7 @@ async def get_rfid_status(
                 None,
                 current_user["username"]
             )
-            
+
             return rfid_status
     except Exception as e:
         logger.error(f"Error getting RFID status: {e}")
@@ -347,7 +347,7 @@ async def capture_image(
     try:
         async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
             result = await client.execute_command("capture_image")
-            
+
             # Log image capture
             background_tasks.add_task(
                 process_alert_and_event,
@@ -356,7 +356,7 @@ async def capture_image(
                 result.get("image_url"),
                 current_user["username"]
             )
-            
+
             return result
     except Exception as e:
         logger.error(f"Error capturing image: {e}")
@@ -380,7 +380,7 @@ async def record_video(
     try:
         async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
             result = await client.execute_command("record_video", {"duration": duration})
-            
+
             # Log video recording
             background_tasks.add_task(
                 process_alert_and_event,
@@ -389,11 +389,78 @@ async def record_video(
                 result.get("video_url"),
                 current_user["username"]
             )
-            
+
             return result
     except Exception as e:
         logger.error(f"Error recording video: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to record video"
+        )
+
+@router.get("/sensors/{sensor_type}/events", response_model=List[Dict[str, Any]])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_sensor_events(
+    sensor_type: str,
+    limit: int = 100,
+    request: Request = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /sensors/{sensor_type}/events endpoint returns events from a specific sensor.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            events = await client.get_sensor_events(sensor_type, limit)
+
+            # Log sensor events retrieval
+            background_tasks.add_task(
+                process_alert_and_event,
+                "sensor_events",
+                f"Sensor events retrieved for {sensor_type}",
+                None,
+                current_user["username"]
+            )
+
+            return events
+    except Exception as e:
+        logger.error(f"Error getting sensor events: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sensor events for {sensor_type}"
+        )
+
+@router.get("/sensors/{sensor_type}/stats", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_sensor_stats(
+    sensor_type: str,
+    request: Request = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /sensors/{sensor_type}/stats endpoint returns statistics for a specific sensor.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            stats = await client.get_sensor_stats(sensor_type)
+
+            # Log sensor stats retrieval
+            background_tasks.add_task(
+                process_alert_and_event,
+                "sensor_stats",
+                f"Sensor statistics retrieved for {sensor_type}",
+                None,
+                current_user["username"]
+            )
+
+            return stats
+    except Exception as e:
+        logger.error(f"Error getting sensor stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sensor statistics for {sensor_type}"
         )
