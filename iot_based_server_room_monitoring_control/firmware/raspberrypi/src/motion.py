@@ -18,6 +18,7 @@ from gpiozero import MotionSensor as PIRMotionSensor
 from gpiozero import Button as OpenCloseSensor
 from gpiozero import LED
 from time import sleep
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -138,11 +139,19 @@ def main() -> None:
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
     args = parser.parse_args()
 
+    # Get GPIO pin configuration from environment variables
+    motion_pin = int(os.getenv("MOTION_SENSOR_PIN", "4"))
+    door_pin = int(os.getenv("DOOR_SENSOR_PIN", "17"))
+    window_pin = int(os.getenv("WINDOW_SENSOR_PIN", "27"))
+    motion_led_pin = int(os.getenv("MOTION_LED_PIN", "22"))
+    door_led_pin = int(os.getenv("DOOR_LED_PIN", "23"))
+    window_led_pin = int(os.getenv("WINDOW_LED_PIN", "24"))
+
     # Initialize sensor handlers
     sensors = [
-        MotionSensorHandler(SensorConfig(4, 22, "Motion", args.verbose)),
-        DoorSensorHandler(SensorConfig(17, 23, "Door", args.verbose)),
-        WindowSensorHandler(SensorConfig(27, 24, "Window", args.verbose))
+        MotionSensorHandler(SensorConfig(motion_pin, motion_led_pin, "Motion", args.verbose)),
+        DoorSensorHandler(SensorConfig(door_pin, door_led_pin, "Door", args.verbose)),
+        WindowSensorHandler(SensorConfig(window_pin, window_led_pin, "Window", args.verbose))
     ]
 
     try:
