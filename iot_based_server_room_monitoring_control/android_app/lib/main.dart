@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences.dart';
 import 'package:security_iot/providers/app_state.dart';
 import 'package:security_iot/screens/home_screen.dart';
 import 'package:security_iot/screens/login_screen.dart';
@@ -7,10 +8,17 @@ import 'package:security_iot/screens/onboarding_screen.dart';
 import 'package:security_iot/screens/logs_screen.dart';
 import 'package:security_iot/screens/controls_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load saved configuration
+  final prefs = await SharedPreferences.getInstance();
+  final baseUrl = prefs.getString('base_url');
+  final authToken = prefs.getString('auth_token');
+
   runApp(
     ChangeNotifierProvider(
-      create: (_) => AppState(),
+      create: (_) => AppState(baseUrl: baseUrl)..setAuthToken(authToken ?? ''),
       child: SecurityApp(),
     ),
   );

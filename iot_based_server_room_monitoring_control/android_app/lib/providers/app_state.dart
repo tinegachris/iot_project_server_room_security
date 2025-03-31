@@ -5,21 +5,38 @@ import '../models/alert.dart';
 import '../services/api_service.dart';
 
 class AppState extends ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService;
   SystemStatus? _systemStatus;
   List<LogEntry> _logs = [];
   List<Alert> _alerts = [];
   bool _isLoading = false;
   String? _error;
+  String? _baseUrl;
+
+  AppState({String? baseUrl}) {
+    _baseUrl = baseUrl;
+    _apiService = ApiService(baseUrl: baseUrl);
+  }
 
   SystemStatus? get systemStatus => _systemStatus;
   List<LogEntry> get logs => _logs;
   List<Alert> get alerts => _alerts;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get baseUrl => _baseUrl;
+
+  void setBaseUrl(String url) {
+    _baseUrl = url;
+    _apiService.setBaseUrl(url);
+  }
 
   void setAuthToken(String token) {
     _apiService.setAuthToken(token);
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
   }
 
   Future<void> fetchSystemStatus() async {
