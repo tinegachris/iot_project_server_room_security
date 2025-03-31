@@ -2,30 +2,120 @@ server:
   host: "0.0.0.0"
   port: 8000
   debug: true
+  api_prefix: "/api/v1"
+  cors_origins: ["http://localhost:3000", "https://yourdomain.com"]
+  log_level: "${LOG_LEVEL}"
+  secret_key: "${SECRET_KEY}"
+
+database:
+  url: "${DATABASE_URL}"
+  pool_size: 5
+  max_overflow: 10
+  pool_timeout: 30
+  pool_recycle: 1800
+
+redis:
+  host: "${REDIS_HOST}"
+  port: ${REDIS_PORT}
+  db: ${REDIS_DB}
+  password: "${REDIS_PASSWORD}"
 
 twilio:
   account_sid: "${TWILIO_ACCOUNT_SID}"
   auth_token: "${TWILIO_AUTH_TOKEN}"
-  from_number: "+1234567890"      # Your Twilio phone number
-  to_number: "+0987654321"        # Recipient phone number
+  from_number: "${TWILIO_FROM_NUMBER}"
+  to_number: "${TWILIO_TO_NUMBER}"
 
 smtp:
-  server: "smtp.example.com"      # e.g., smtp.gmail.com
-  port: 587                       # Typically 587 for TLS
+  server: "${SMTP_SERVER}"
+  port: ${SMTP_PORT}
   username: "${SMTP_USERNAME}"
   password: "${SMTP_PASSWORD}"
-  from_email: "your_email@example.com"
-  to_email: "recipient@example.com"
+  from_email: "${EMAIL_FROM}"
+  to_email: "${EMAIL_TO}"
+  use_tls: true
 
 cloud_storage:
-  provider: "aws"                 # Change to your provider (e.g., aws, gcp, etc.)
+  provider: "aws"
   bucket: "server-room-videos"
   access_key: "${CLOUD_STORAGE_ACCESS_KEY}"
   secret_key: "${CLOUD_STORAGE_SECRET_KEY}"
   region: "us-east-1"
+  max_retries: 3
+  timeout: 30
 
-sensors:
-  # List of RFID tag IDs that are allowed access.
-  rfid_allowed_tags:
-    - "TAG12345"
-    - "TAG67890"
+raspberry_pi:
+  # GPIO Pin Configuration
+  pins:
+    motion_sensor: ${MOTION_SENSOR_PIN}
+    door_sensor: ${DOOR_SENSOR_PIN}
+    window_sensor: ${WINDOW_SENSOR_PIN}
+    motion_led: 22
+    door_led: 23
+    window_led: 24
+    rfid:
+      rst: 22
+      sda: 24
+      mosi: 19
+      miso: 21
+      sclk: 23
+
+  # Camera Settings
+  camera:
+    resolution: "${CAMERA_RESOLUTION}"
+    framerate: ${VIDEO_FPS}
+    rotation: ${CAMERA_ROTATION}
+    brightness: ${CAMERA_BRIGHTNESS}
+    contrast: ${CAMERA_CONTRAST}
+    saturation: ${CAMERA_SATURATION}
+    output_dir: "${VIDEO_OUTPUT_DIR}"
+    image_dir: "${IMAGE_OUTPUT_DIR}"
+    video_duration: ${VIDEO_DURATION}
+    image_quality: 85
+    video_codec: "h264"
+    video_bitrate: "5000000"
+
+  # RFID Configuration
+  rfid:
+    spi_port: 0
+    spi_device: 0
+    spi_speed: 1000000
+    allowed_cards:
+      - uid: [5, 74, 28, 185, 234]
+        name: "Card A"
+        role: "admin"
+      - uid: [83, 164, 247, 164, 164]
+        name: "Card B"
+        role: "IT staff"
+      - uid: [20, 38, 121, 207, 132]
+        name: "Card C"
+        role: "maintenance"
+
+  # Sensor Settings
+  sensors:
+    motion:
+      sensitivity: ${MOTION_SENSITIVITY}
+      trigger_delay: ${MOTION_TRIGGER_DELAY}
+    door:
+      debounce_time: ${DOOR_DEBOUNCE_TIME}
+    window:
+      debounce_time: ${WINDOW_DEBOUNCE_TIME}
+
+monitoring:
+  health_check_interval: ${HEALTH_CHECK_INTERVAL}
+  max_retries: ${MAX_RETRIES}
+  storage_threshold_gb: ${STORAGE_THRESHOLD_GB}
+  max_log_retention_days: ${MAX_LOG_RETENTION_DAYS}
+  max_video_retention_days: ${MAX_VIDEO_RETENTION_DAYS}
+  event_cooldown: ${EVENT_COOLDOWN}
+  cleanup_interval: ${CLEANUP_INTERVAL}
+
+security:
+  jwt_secret: "${JWT_SECRET}"
+  jwt_algorithm: "HS256"
+  jwt_expire_minutes: 30
+  password_hash_algorithm: "bcrypt"
+  rate_limit:
+    requests: 100
+    window: 60
+  allowed_ips: "${ALLOWED_IPS}"
