@@ -14,102 +14,11 @@ from .models import (
 )
 from ..config.config import config
 from .schemas import Severity, AlertSeverity
+from .raspberry_pi_client import RaspberryPiClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class RaspberryPiClient:
-    """Client for communicating with Raspberry Pi."""
-
-    def __init__(self, base_url: str):
-        self.base_url = base_url
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.timeout = aiohttp.ClientTimeout(total=30)
-        self.retry_count = 3
-        self.retry_delay = 1
-
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession(timeout=self.timeout)
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
-
-    async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Make an HTTP request with retry logic."""
-        for attempt in range(self.retry_count):
-            try:
-                async with getattr(self.session, method)(f"{self.base_url}{endpoint}", **kwargs) as response:
-                    response.raise_for_status()
-                    return await response.json()
-            except aiohttp.ClientError as e:
-                if attempt == self.retry_count - 1:
-                    logger.error(f"Failed to {method} {endpoint} after {self.retry_count} attempts: {e}")
-                    raise
-                await asyncio.sleep(self.retry_delay * (attempt + 1))
-
-        raise RuntimeError(f"Failed to {method} {endpoint} after {self.retry_count} attempts")
-
-    async def get_status(self) -> Dict[str, Any]:
-        """Get Raspberry Pi status."""
-        if not self.session:
-            raise RuntimeError("Client session not initialized")
-
-        try:
-            return await self._make_request("get", "/status")
-        except Exception as e:
-            logger.error(f"Error getting Raspberry Pi status: {e}")
-            raise
-
-    async def execute_command(self, command: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Execute a command on the Raspberry Pi."""
-        if not self.session:
-            raise RuntimeError("Client session not initialized")
-
-        try:
-            return await self._make_request(
-                "post",
-                "/control",
-                json={"action": command, "parameters": params}
-            )
-        except Exception as e:
-            logger.error(f"Error executing command {command}: {e}")
-            raise
-
-    async def get_sensor_data(self, sensor_type: str) -> Dict[str, Any]:
-        """Get data from a specific sensor."""
-        if not self.session:
-            raise RuntimeError("Client session not initialized")
-
-        try:
-            return await self._make_request("get", f"/sensors/{sensor_type}")
-        except Exception as e:
-            logger.error(f"Error getting sensor data for {sensor_type}: {e}")
-            raise
-
-    async def get_camera_status(self) -> Dict[str, Any]:
-        """Get camera status and settings."""
-        if not self.session:
-            raise RuntimeError("Client session not initialized")
-
-        try:
-            return await self._make_request("get", "/camera/status")
-        except Exception as e:
-            logger.error(f"Error getting camera status: {e}")
-            raise
-
-    async def get_rfid_status(self) -> Dict[str, Any]:
-        """Get RFID reader status and last read card."""
-        if not self.session:
-            raise RuntimeError("Client session not initialized")
-
-        try:
-            return await self._make_request("get", "/rfid/status")
-        except Exception as e:
-            logger.error(f"Error getting RFID status: {e}")
-            raise
 
 async def process_alert_and_event(
     db: Session,
@@ -186,7 +95,11 @@ async def get_sensor_status(db: Session) -> Dict[str, Any]:
                     "last_check": datetime.fromisoformat(sensor_data.get("last_check", datetime.now().isoformat())),
                     "error": sensor_data.get("error"),
                     "data": sensor_data.get("data"),
-                    "location": sensor_data.get("location")
+                    "location": sensor_data.get("location"),
+                    "type": sensor_data.get("type"),
+                    "firmware_version": sensor_data.get("firmware_version"),
+                    "last_event": datetime.fromisoformat(sensor_data["last_event"]) if sensor_data.get("last_event") else None,
+                    "event_count": sensor_data.get("event_count", 0)
                 }
 
             # Check for errors
@@ -211,7 +124,9 @@ async def get_sensor_status(db: Session) -> Dict[str, Any]:
                 "raspberry_pi": {
                     "is_online": True,
                     "last_heartbeat": datetime.now(),
-                    "firmware_version": pi_status.get("firmware_version", "unknown")
+                    "firmware_version": pi_status.get("firmware_version", "unknown"),
+                    "sensor_types": [s["type"] for s in sensors.values() if s.get("type")],
+                    "total_events": sum(s["event_count"] for s in sensors.values())
                 }
             }
     except Exception as e:
