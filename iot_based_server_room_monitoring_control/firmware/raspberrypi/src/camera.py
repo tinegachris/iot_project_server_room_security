@@ -3,160 +3,175 @@
 camera.py
 
 This module handles video surveillance functions using the Raspberry Pi Camera.
-It uses the picamera library to record video clips when triggered—typically upon an intrusion event.
-The recording function allows for customization of camera settings to suit surveillance needs.
+It provides functionality for capturing images and recording videos with configurable settings,
+and includes cloud storage integration for remote access to captured media.
 
-Functions:
-    record_video(duration, resolution, framerate, rotation, brightness):
-        Records a video for the specified duration with optional camera settings.
+Dependencies:
+    - picamera (install with `pip install picamera`)
+    - requests (install with `pip install requests`)
+    - python-dotenv (install with `pip install python-dotenv`)
 """
 
 import time
 import os
 import logging
 import requests
+from dataclasses import dataclass
+from typing import Optional, Tuple
 from picamera import PiCamera
+from dotenv import load_dotenv
 
-# Configure logging for debugging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Directory to store recorded videos; adjust this path as needed.
-VIDEO_OUTPUT_DIR = "/home/pi/Videos"
-IMAGE_OUTPUT_DIR = "/home/pi/Pictures"
+# Load environment variables
+load_dotenv()
 
-# Ensure the output directory exists
-try:
-    os.makedirs(VIDEO_OUTPUT_DIR, exist_ok=True)
-    os.makedirs(IMAGE_OUTPUT_DIR, exist_ok=True)
-except Exception as e:
-    logging.error("Failed to create output directories: %s", e)
-    raise
+@dataclass
+class CameraConfig:
+    """Configuration for camera settings."""
+    resolution: Tuple[int, int] = (1280, 720)
+    framerate: int = 30
+    rotation: int = 0
+    brightness: int = 50
+    output_dir: str = "/home/pi/Videos"
+    image_dir: str = "/home/pi/Pictures"
 
-CLOUD_STORAGE_URL = "https://your-cloud-storage-service.com/upload"
+class CameraManager:
+    """Manages camera operations and cloud storage integration."""
 
-def upload_to_cloud(file_path):
-    """
-    Uploads a file to cloud storage.
+    def __init__(self, config: Optional[CameraConfig] = None):
+        """Initialize the camera manager with optional configuration."""
+        self.config = config or CameraConfig()
+        self.cloud_url = os.getenv("CLOUD_STORAGE_URL")
+        self._setup_directories()
+        self._check_camera()
 
-    Args:
-        file_path (str): The path to the file to upload.
+    def _setup_directories(self) -> None:
+        """Create output directories if they don't exist."""
+        try:
+            os.makedirs(self.config.output_dir, exist_ok=True)
+            os.makedirs(self.config.image_dir, exist_ok=True)
+            logger.info("Output directories created successfully")
+        except Exception as e:
+            logger.error("Failed to create output directories: %s", e)
+            raise
 
-    Returns:
-        str: The URL of the uploaded file.
-    """
-    try:
-        with open(file_path, 'rb') as file:
-            response = requests.post(CLOUD_STORAGE_URL, files={'file': file})
-            response.raise_for_status()
-            logging.info("File uploaded to cloud storage successfully.")
-            return response.json().get('url')
-    except requests.RequestException as e:
-        logging.error("Failed to upload file to cloud storage: %s", e)
-        raise
-    except Exception as e:
-        logging.error("An unexpected error occurred: %s", e)
-        raise
+    def _check_camera(self) -> None:
+        """Verify camera availability."""
+        try:
+            with PiCamera() as camera:
+                camera.close()
+            logger.info("Camera initialized successfully")
+        except Exception as e:
+            logger.error("Camera initialization failed: %s", e)
+            raise
 
-def capture_image(resolution=(1280, 720), rotation=0, brightness=50):
-    """
-    Captures a still image using the Raspberry Pi Camera.
-    Allows customization of camera settings to optimize image capture.
+    def _configure_camera(self, camera: PiCamera) -> None:
+        """Configure camera with current settings."""
+        camera.resolution = self.config.resolution
+        camera.framerate = self.config.framerate
+        camera.rotation = self.config.rotation
+        camera.brightness = self.config.brightness
+        logger.debug("Camera configured with: resolution=%s, framerate=%d, rotation=%d, brightness=%d",
+                    self.config.resolution, self.config.framerate, self.config.rotation, self.config.brightness)
 
-    Args:
-        resolution (tuple, optional): Resolution (width, height) in pixels.
-                                      Defaults to (1280, 720).
-        rotation (int, optional): Rotation angle in degrees (0, 90, 180, 270).
-                                  Defaults to 0.
-        brightness (int, optional): Brightness setting (0 to 100).
-                                    Defaults to 50.
+    def _upload_to_cloud(self, file_path: str) -> Optional[str]:
+        """Upload a file to cloud storage."""
+        if not self.cloud_url:
+            logger.warning("Cloud storage URL not configured")
+            return None
 
-    Returns:
-        str: The full file path to the captured image.
-    """
-    camera = PiCamera()
-    try:
-        camera.resolution = resolution
-        camera.rotation = rotation
-        camera.brightness = brightness
+        try:
+            with open(file_path, 'rb') as file:
+                response = requests.post(self.cloud_url, files={'file': file})
+                response.raise_for_status()
+                cloud_url = response.json().get('url')
+                logger.info("File uploaded successfully: %s", cloud_url)
+                return cloud_url
+        except Exception as e:
+            logger.error("Failed to upload file: %s", e)
+            return None
 
-        logging.info("Camera settings: resolution=%s, rotation=%d, brightness=%d",
-                     resolution, rotation, brightness)
+    def capture_image(self) -> Tuple[str, Optional[str]]:
+        """
+        Capture a still image with current camera settings.
 
-        time.sleep(2)
-
+        Returns:
+            Tuple of (local_file_path, cloud_url)
+        """
         timestamp = int(time.time())
-        file_path = os.path.join(IMAGE_OUTPUT_DIR, f"image_{timestamp}.jpg")
+        file_path = os.path.join(self.config.image_dir, f"image_{timestamp}.jpg")
 
-        logging.info(f"Capturing image: {file_path}")
-        camera.capture(file_path)
+        try:
+            with PiCamera() as camera:
+                self._configure_camera(camera)
+                time.sleep(2)  # Warm-up time
+                camera.capture(file_path)
+                logger.info("Image captured: %s", file_path)
 
-        return file_path
+            cloud_url = self._upload_to_cloud(file_path)
+            return file_path, cloud_url
+        except Exception as e:
+            logger.error("Failed to capture image: %s", e)
+            raise
 
-    except Exception as e:
-        logging.error("Error during image capture: %s", e)
-        raise
+    def record_video(self, duration: int = 10) -> Tuple[str, Optional[str]]:
+        """
+        Record a video with current camera settings.
 
-    finally:
-        camera.close()
+        Args:
+            duration: Recording duration in seconds
 
-def record_video(duration=10, resolution=(1280, 720), framerate=30, rotation=0, brightness=50):
-    """
-    Records a video using the Raspberry Pi Camera for a specified duration.
-    Allows customization of camera settings to optimize surveillance capture.
-
-    Args:
-        duration (int, optional): Duration of the video recording in seconds.
-                                  Defaults to 10 seconds.
-        resolution (tuple, optional): Resolution (width, height) in pixels.
-                                      Defaults to (1280, 720).
-        framerate (int, optional): Frame rate for video recording.
-                                   Defaults to 30.
-        rotation (int, optional): Rotation angle in degrees (0, 90, 180, 270).
-                                  Defaults to 0.
-        brightness (int, optional): Brightness setting (0 to 100).
-                                    Defaults to 50.
-
-    Returns:
-        str: The full file path to the recorded video.
-    """
-    camera = PiCamera()
-    try:
-        camera.resolution = resolution
-        camera.framerate = framerate
-        camera.rotation = rotation
-        camera.brightness = brightness
-
-        logging.info("Camera settings: resolution=%s, framerate=%d, rotation=%d, brightness=%d",
-                     resolution, framerate, rotation, brightness)
-
-        time.sleep(2)
-
+        Returns:
+            Tuple of (local_file_path, cloud_url)
+        """
         timestamp = int(time.time())
-        file_path = os.path.join(VIDEO_OUTPUT_DIR, f"video_{timestamp}.h264")
+        file_path = os.path.join(self.config.output_dir, f"video_{timestamp}.h264")
 
-        logging.info(f"Starting video recording: {file_path}")
-        camera.start_recording(file_path)
-        camera.wait_recording(duration)
-        camera.stop_recording()
-        logging.info("Video recording stopped.")
+        try:
+            with PiCamera() as camera:
+                self._configure_camera(camera)
+                time.sleep(2)  # Warm-up time
 
-        cloud_url = upload_to_cloud(file_path)
-        return file_path, cloud_url
+                camera.start_recording(file_path)
+                camera.wait_recording(duration)
+                camera.stop_recording()
+                logger.info("Video recorded: %s", file_path)
+
+            cloud_url = self._upload_to_cloud(file_path)
+            return file_path, cloud_url
+        except Exception as e:
+            logger.error("Failed to record video: %s", e)
+            raise
+
+    def update_config(self, new_config: CameraConfig) -> None:
+        """Update camera configuration."""
+        self.config = new_config
+        self._setup_directories()
+        logger.info("Camera configuration updated")
+
+def main() -> None:
+    """Test the camera functionality."""
+    try:
+        camera = CameraManager()
+
+        # Test image capture
+        logger.info("Testing image capture...")
+        image_path, image_url = camera.capture_image()
+        logger.info("Image saved to: %s, Cloud URL: %s", image_path, image_url)
+
+        # Test video recording
+        logger.info("Testing video recording...")
+        video_path, video_url = camera.record_video(duration=5)
+        logger.info("Video saved to: %s, Cloud URL: %s", video_path, video_url)
 
     except Exception as e:
-        logging.error("Error during video recording: %s", e)
-        raise
-
-    finally:
-        camera.close()
+        logger.error("Test failed: %s", e)
 
 if __name__ == "__main__":
-    try:
-        test_duration = 5
-        logging.info(f"Recording video for {test_duration} seconds with default settings...")
-        video_file, cloud_url = record_video(duration=test_duration)
-        logging.info(f"Test video saved to: {video_file}, Cloud URL: {cloud_url}")
-        print(f"Test video saved to: {video_file}, Cloud URL: {cloud_url}")
-    except Exception as err:
-        logging.error("An error occurred in testing: %s", err)
+    main()

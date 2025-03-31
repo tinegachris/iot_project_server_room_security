@@ -1,3 +1,0 @@
-# Source Code for the Mobile Application
-
-...existing content...

@@ -1,3 +1,0 @@
-# Android Project Files
-
-...existing content...

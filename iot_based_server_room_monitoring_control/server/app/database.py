@@ -1,8 +1,15 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
+from sqlalchemy.exc import SQLAlchemyError
 import os
 from dotenv import load_dotenv
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -13,9 +20,14 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
     "sqlite:///./server_room_monitor.db"
 )
 
-# Create SQLAlchemy engine
+# Create SQLAlchemy engine with connection pooling
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,  # Recycle connections after 30 minutes
     connect_args={"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 )
 
@@ -25,10 +37,34 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create Base class
 Base = declarative_base()
 
-# Dependency to get DB session
 def get_db():
+    """Dependency to get DB session with proper error handling"""
     db = SessionLocal()
     try:
         yield db
+    except SQLAlchemyError as e:
+        logger.error(f"Database error: {str(e)}")
+        db.rollback()
+        raise
     finally:
-        db.close() 
+        db.close()
+
+def init_db():
+    """Initialize database tables"""
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
+    except SQLAlchemyError as e:
+        logger.error(f"Error creating database tables: {str(e)}")
+        raise
+
+def check_db_connection():
+    """Check database connection"""
+    try:
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        return True
+    except SQLAlchemyError as e:
+        logger.error(f"Database connection error: {str(e)}")
+        return False

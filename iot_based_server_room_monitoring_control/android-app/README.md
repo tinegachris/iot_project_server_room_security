@@ -1,3 +1,0 @@
-# Build and Deployment Instructions for the Android App
-
-...existing content...

@@ -1,15 +1,18 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
+import json
 from .database import get_db
-from .controllers import process_alert_and_event
+from .controllers import process_alert_and_event, get_sensor_status, execute_control_command
 from .models import LogEntry as DBLogEntry
-from .schemas import LogEntry, Alert, ControlCommand
+from .schemas import LogEntry, Alert, ControlCommand, SensorStatus, SystemHealth
 from .rate_limit import rate_limit
 from .auth import get_current_user
+from ..config.config import config
+from .raspberry_pi_client import RaspberryPiClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,22 +24,36 @@ router = APIRouter()
 RATE_LIMIT_REQUESTS = 100  # requests per minute
 RATE_LIMIT_WINDOW = 60    # seconds
 
-@router.get("/status")
+@router.get("/status", response_model=SystemHealth)
 @rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
-async def get_status(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     GET /status endpoint returns the current status of the server room.
     Includes system health metrics and sensor status.
     """
     try:
         # Get system health metrics
-        system_status = await get_system_health()
-        return {
-            "status": "normal",
-            "timestamp": datetime.now(),
-            "system_health": system_status,
-            "user": current_user["username"]
-        }
+        system_status = await get_sensor_status(db)
+
+        # Add user context
+        system_status["user"] = current_user["username"]
+        system_status["timestamp"] = datetime.now()
+
+        # Log status check
+        background_tasks.add_task(
+            process_alert_and_event,
+            "status_check",
+            f"Status check by {current_user['username']}",
+            None,
+            current_user["username"]
+        )
+
+        return system_status
     except Exception as e:
         logger.error(f"Error getting system status: {e}")
         raise HTTPException(
@@ -61,7 +78,7 @@ async def get_logs(
     """
     try:
         query = db.query(DBLogEntry)
-        
+
         # Apply filters
         if event_type:
             query = query.filter(DBLogEntry.event_type == event_type)
@@ -69,11 +86,11 @@ async def get_logs(
             query = query.filter(DBLogEntry.timestamp >= start_date)
         if end_date:
             query = query.filter(DBLogEntry.timestamp <= end_date)
-            
+
         # Apply pagination
         total = query.count()
         logs = query.offset(skip).limit(limit).all()
-        
+
         return {
             "logs": logs,
             "total": total,
@@ -92,6 +109,7 @@ async def get_logs(
 async def post_alert(
     request: Request,
     alert: Alert,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -106,7 +124,7 @@ async def post_alert(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Alert message is required"
             )
-            
+
         # Process the alert
         log_entry = await process_alert_and_event(
             db,
@@ -115,10 +133,10 @@ async def post_alert(
             alert.video_url,
             current_user["username"]
         )
-        
+
         # Log the alert
         logger.info(f"Alert created by {current_user['username']}: {alert.message}")
-        
+
         return {
             "message": "Alert processed successfully",
             "log_id": log_entry.id,
@@ -138,6 +156,7 @@ async def post_alert(
 async def post_control(
     request: Request,
     command: ControlCommand,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -147,32 +166,37 @@ async def post_control(
     """
     try:
         # Validate command
-        if command.action not in ["lock", "unlock", "restart_system", "test_sensors"]:
+        valid_actions = ["lock", "unlock", "restart_system", "test_sensors", "capture_image", "record_video"]
+        if command.action not in valid_actions:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid command action"
+                detail=f"Invalid command action. Must be one of: {', '.join(valid_actions)}"
             )
-            
+
         # Check user permissions
         if command.action in ["restart_system"] and not current_user.get("is_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions for this command"
             )
-            
-        # Execute command
+
+       # Execute command
         result = await execute_control_command(command.action)
-        
+
         # Log the command execution
         log_entry = DBLogEntry(
             event_type="control_command",
             timestamp=datetime.now(),
-            details=f"Command '{command.action}' executed by {current_user['username']}",
+            details=json.dumps({
+                "command": command.action,
+                "user": current_user["username"],
+                "result": result
+            }),
             user_id=current_user["id"]
         )
         db.add(log_entry)
         db.commit()
-        
+
         return {
             "message": f"Command '{command.action}' executed successfully",
             "timestamp": datetime.now(),
@@ -212,22 +236,231 @@ async def get_system_health():
         logger.error(f"Error getting system health: {e}")
         return {"error": "Failed to retrieve system health metrics"}
 
-async def execute_control_command(action: str):
+@router.get("/sensors/{sensor_type}", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_sensor_data(
+    sensor_type: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Execute a control command and return the result.
+    GET /sensors/{sensor_type} endpoint returns data from a specific sensor.
     """
     try:
-        # This would be implemented to execute actual control commands
-        if action == "lock":
-            return {"status": "success", "message": "Door locked"}
-        elif action == "unlock":
-            return {"status": "success", "message": "Door unlocked"}
-        elif action == "restart_system":
-            return {"status": "success", "message": "System restart initiated"}
-        elif action == "test_sensors":
-            return {"status": "success", "message": "Sensor test completed"}
-        else:
-            raise ValueError(f"Unknown command: {action}")
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            sensor_data = await client.get_sensor_data(sensor_type)
+
+            # Log sensor data retrieval
+            background_tasks.add_task(
+                process_alert_and_event,
+                "sensor_data",
+                f"Sensor data retrieved for {sensor_type}",
+                None,
+                current_user["username"]
+            )
+
+            return sensor_data
     except Exception as e:
-        logger.error(f"Error executing command {action}: {e}")
-        raise
+        logger.error(f"Error getting sensor data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sensor data for {sensor_type}"
+        )
+
+@router.get("/camera/status", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_camera_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /camera/status endpoint returns camera status and settings.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            camera_status = await client.get_camera_status()
+
+            # Log camera status check
+            background_tasks.add_task(
+                process_alert_and_event,
+                "camera_status",
+                "Camera status retrieved",
+                None,
+                current_user["username"]
+            )
+
+            return camera_status
+    except Exception as e:
+        logger.error(f"Error getting camera status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve camera status"
+        )
+
+@router.get("/rfid/status", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_rfid_status(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /rfid/status endpoint returns RFID reader status and last read card.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            rfid_status = await client.get_rfid_status()
+
+            # Log RFID status check
+            background_tasks.add_task(
+                process_alert_and_event,
+                "rfid_status",
+                "RFID status retrieved",
+                None,
+                current_user["username"]
+            )
+
+            return rfid_status
+    except Exception as e:
+        logger.error(f"Error getting RFID status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve RFID status"
+        )
+
+@router.post("/camera/capture")
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def capture_image(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    POST /camera/capture endpoint triggers image capture.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            result = await client.execute_command("capture_image")
+
+            # Log image capture
+            background_tasks.add_task(
+                process_alert_and_event,
+                "image_capture",
+                "Image captured",
+                result.get("image_url"),
+                current_user["username"]
+            )
+
+            return result
+    except Exception as e:
+        logger.error(f"Error capturing image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to capture image"
+        )
+
+@router.post("/camera/record")
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def record_video(
+    duration: int = 30,
+    request: Request = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    POST /camera/record endpoint triggers video recording.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            result = await client.execute_command("record_video", {"duration": duration})
+
+            # Log video recording
+            background_tasks.add_task(
+                process_alert_and_event,
+                "video_recording",
+                f"Video recorded for {duration} seconds",
+                result.get("video_url"),
+                current_user["username"]
+            )
+
+            return result
+    except Exception as e:
+        logger.error(f"Error recording video: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record video"
+        )
+
+@router.get("/sensors/{sensor_type}/events", response_model=List[Dict[str, Any]])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_sensor_events(
+    sensor_type: str,
+    limit: int = 100,
+    request: Request = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /sensors/{sensor_type}/events endpoint returns events from a specific sensor.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            events = await client.get_sensor_events(sensor_type, limit)
+
+            # Log sensor events retrieval
+            background_tasks.add_task(
+                process_alert_and_event,
+                "sensor_events",
+                f"Sensor events retrieved for {sensor_type}",
+                None,
+                current_user["username"]
+            )
+
+            return events
+    except Exception as e:
+        logger.error(f"Error getting sensor events: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sensor events for {sensor_type}"
+        )
+
+@router.get("/sensors/{sensor_type}/stats", response_model=Dict[str, Any])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_sensor_stats(
+    sensor_type: str,
+    request: Request = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    GET /sensors/{sensor_type}/stats endpoint returns statistics for a specific sensor.
+    """
+    try:
+        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+            stats = await client.get_sensor_stats(sensor_type)
+
+            # Log sensor stats retrieval
+            background_tasks.add_task(
+                process_alert_and_event,
+                "sensor_stats",
+                f"Sensor statistics retrieved for {sensor_type}",
+                None,
+                current_user["username"]
+            )
+
+            return stats
+    except Exception as e:
+        logger.error(f"Error getting sensor stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sensor statistics for {sensor_type}"
+        )

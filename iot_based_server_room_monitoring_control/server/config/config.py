@@ -9,10 +9,10 @@ def load_config(config_file="config/config.yaml"):
     """
     Loads the configuration from a YAML file and replaces placeholders
     with values from environment variables.
-    
+
     Args:
         config_file (str): Path to the YAML configuration file.
-        
+
     Returns:
         dict: A dictionary with configuration settings.
     """
