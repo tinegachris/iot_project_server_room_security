@@ -141,3 +141,11 @@ class RaspberryPiClient:
     async def perform_update(self) -> Dict[str, Any]:
         """Perform firmware update."""
         return await self.execute_command("update_firmware")
+
+    async def get_sensor_events(self, sensor_type: str, limit: int = 100) -> Dict[str, Any]:
+        """Get events from a specific sensor."""
+        return await self._make_request("get", f"/sensors/{sensor_type}/events?limit={limit}")
+
+    async def get_sensor_stats(self, sensor_type: str) -> Dict[str, Any]:
+        """Get statistics for a specific sensor."""
+        return await self._make_request("get", f"/sensors/{sensor_type}/stats")
