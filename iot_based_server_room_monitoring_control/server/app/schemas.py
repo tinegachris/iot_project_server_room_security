@@ -59,6 +59,13 @@ class SensorStatus(BaseModel):
     error: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
     location: Optional[str] = None
+    type: Optional[str] = None  # motion, door, window, rfid, camera
+    firmware_version: Optional[str] = None
+    last_event: Optional[datetime] = None
+    event_count: Optional[int] = 0
+
+    class Config:
+        orm_mode = True
 
 class CameraStatus(BaseModel):
     is_active: bool
@@ -82,6 +89,12 @@ class SensorData(BaseModel):
     status: SensorStatus
     data: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=datetime.now)
+    firmware_version: Optional[str] = None
+    last_event: Optional[datetime] = None
+    event_count: Optional[int] = 0
+
+    class Config:
+        orm_mode = True
 
 class Alert(BaseModel):
     id: Optional[int] = None
