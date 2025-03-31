@@ -17,6 +17,7 @@ import logging
 import time
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
+from enum import IntEnum
 
 # Configure logging
 logging.basicConfig(
@@ -24,6 +25,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+class RFIDStatus(IntEnum):
+    """Status codes for RFID operations."""
+    OK = 0
+    NO_TAG = 1
+    ERROR = 2
 
 @dataclass
 class CardInfo:
@@ -106,18 +113,8 @@ class MFRC522:
     PICC_TRANSFER = 0xB0
     PICC_HALT = 0x50
 
-    # Status codes
-    MI_OK = 0
-    MI_NOTAGERR = 1
-    MI_ERR = 2
-
     def __init__(self, spd: int = 1000000) -> None:
-        """
-        Initialize the MFRC522 RFID reader.
-
-        Args:
-            spd: SPI speed in Hz (default: 1MHz)
-        """
+        """Initialize the MFRC522 RFID reader."""
         try:
             self.spi = spidev.SpiDev()
             self.spi.open(0, 0)
@@ -133,59 +130,43 @@ class MFRC522:
             raise
 
     def MFRC522_Reset(self) -> None:
-        """
-        Reset the MFRC522 RFID reader.
-        """
+        """Reset the MFRC522 RFID reader."""
         self.Write_MFRC522(self.CommandReg, self.PCD_RESETPHASE)
 
     def Write_MFRC522(self, addr: int, val: int) -> None:
-        """
-        Write a value to a register on the MFRC522.
-        """
+        """Write a value to a register on the MFRC522."""
         self.spi.xfer2([(addr << 1) & 0x7E, val])
 
     def Read_MFRC522(self, addr: int) -> int:
-        """
-        Read a value from a register on the MFRC522.
-        """
+        """Read a value from a register on the MFRC522."""
         val = self.spi.xfer2([((addr << 1) & 0x7E) | 0x80, 0])
         return val[1]
 
     def SetBitMask(self, reg: int, mask: int) -> None:
-        """
-        Set bits in a register on the MFRC522.
-        """
+        """Set bits in a register on the MFRC522."""
         tmp = self.Read_MFRC522(reg)
         self.Write_MFRC522(reg, tmp | mask)
 
     def ClearBitMask(self, reg: int, mask: int) -> None:
-        """
-        Clear bits in a register on the MFRC522.
-        """
+        """Clear bits in a register on the MFRC522."""
         tmp = self.Read_MFRC522(reg)
         self.Write_MFRC522(reg, tmp & (~mask))
 
     def AntennaOn(self) -> None:
-        """
-        Turn the antenna on.
-        """
+        """Turn the antenna on."""
         temp = self.Read_MFRC522(self.TxControlReg)
         if ~(temp & 0x03):
             self.SetBitMask(self.TxControlReg, 0x03)
 
     def AntennaOff(self) -> None:
-        """
-        Turn the antenna off.
-        """
+        """Turn the antenna off."""
         self.ClearBitMask(self.TxControlReg, 0x03)
 
     def MFRC522_ToCard(self, command: int, sendData: List[int]) -> Tuple[int, List[int], int]:
-        """
-        Communicate with a card.
-        """
+        """Communicate with a card."""
         backData = []
         backLen = 0
-        status = self.MI_ERR
+        status = RFIDStatus.ERROR
         irqEn = 0x00
         waitIRq = 0x00
 
@@ -220,9 +201,9 @@ class MFRC522:
 
         if i:
             if not (self.Read_MFRC522(self.ErrorReg) & 0x1B):
-                status = self.MI_OK
+                status = RFIDStatus.OK
                 if n & irqEn & 0x01:
-                    status = self.MI_NOTAGERR
+                    status = RFIDStatus.NO_TAG
 
                 if command == self.PCD_TRANSCEIVE:
                     n = self.Read_MFRC522(self.FIFOLevelReg)
@@ -233,42 +214,36 @@ class MFRC522:
                     for _ in range(n):
                         backData.append(self.Read_MFRC522(self.FIFODataReg))
             else:
-                status = self.MI_ERR
+                status = RFIDStatus.ERROR
 
         return status, backData, backLen
 
     def MFRC522_Request(self, reqMode: int) -> Tuple[int, int]:
-        """
-        Request a tag.
-        """
+        """Request a tag."""
         self.Write_MFRC522(self.BitFramingReg, 0x07)
         status, backData, backBits = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, [reqMode])
 
-        if status != self.MI_OK or backBits != 0x10:
-            status = self.MI_ERR
+        if status != RFIDStatus.OK or backBits != 0x10:
+            status = RFIDStatus.ERROR
 
         return status, backBits
 
     def MFRC522_Anticoll(self) -> Tuple[int, List[int]]:
-        """
-        Anti-collision detection.
-        """
+        """Anti-collision detection."""
         self.Write_MFRC522(self.BitFramingReg, 0x00)
         status, backData, backBits = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, [self.PICC_ANTICOLL, 0x20])
 
-        if status == self.MI_OK and len(backData) == 5:
+        if status == RFIDStatus.OK and len(backData) == 5:
             serNumCheck = 0
             for i in range(4):
                 serNumCheck ^= backData[i]
             if serNumCheck != backData[4]:
-                status = self.MI_ERR
+                status = RFIDStatus.ERROR
 
         return status, backData
 
     def CalculateCRC(self, data: List[int]) -> List[int]:
-        """
-        Calculate CRC.
-        """
+        """Calculate CRC."""
         self.ClearBitMask(self.DivIrqReg, 0x04)
         self.SetBitMask(self.FIFOLevelReg, 0x80)
 
@@ -285,53 +260,45 @@ class MFRC522:
         return [self.Read_MFRC522(self.CRCResultRegL), self.Read_MFRC522(self.CRCResultRegM)]
 
     def MFRC522_SelectTag(self, serNum: List[int]) -> int:
-        """
-        Select a tag.
-        """
+        """Select a tag."""
         buf = [self.PICC_SELECTTAG, 0x70] + serNum
         buf += self.CalculateCRC(buf)
         status, backData, backLen = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buf)
 
-        if status == self.MI_OK and backLen == 0x18:
+        if status == RFIDStatus.OK and backLen == 0x18:
             logger.info("Size: %s", backData[0])
             return backData[0]
         return 0
 
     def MFRC522_Auth(self, authMode: int, blockAddr: int, sectorKey: List[int], serNum: List[int]) -> int:
-        """
-        Authenticate a tag.
-        """
+        """Authenticate a tag."""
         buff = [authMode, blockAddr] + sectorKey + serNum
         status, backData, backLen = self.MFRC522_ToCard(self.PCD_AUTHENT, buff)
 
-        if status != self.MI_OK or not (self.Read_MFRC522(self.Status2Reg) & 0x08):
+        if status != RFIDStatus.OK or not (self.Read_MFRC522(self.Status2Reg) & 0x08):
             logger.error("AUTH ERROR!!")
 
         return status
 
     def MFRC522_Read(self, blockAddr: int) -> None:
-        """
-        Read data from a block.
-        """
+        """Read data from a block."""
         recvData = [self.PICC_READ, blockAddr] + self.CalculateCRC([self.PICC_READ, blockAddr])
         status, backData, backLen = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, recvData)
 
-        if status == self.MI_OK and len(backData) == 16:
+        if status == RFIDStatus.OK and len(backData) == 16:
             logger.info("Sector %s %s", blockAddr, backData)
         else:
             logger.error("Error while reading!")
 
     def MFRC522_Write(self, blockAddr: int, writeData: List[int]) -> None:
-        """
-        Write data to a block.
-        """
+        """Write data to a block."""
         buff = [self.PICC_WRITE, blockAddr] + self.CalculateCRC([self.PICC_WRITE, blockAddr])
         status, backData, backLen = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buff)
 
-        if status == self.MI_OK and backLen == 4 and (backData[0] & 0x0F) == 0x0A:
+        if status == RFIDStatus.OK and backLen == 4 and (backData[0] & 0x0F) == 0x0A:
             buf = writeData + self.CalculateCRC(writeData)
             status, backData, backLen = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buf)
-            if status == self.MI_OK and backLen == 4 and (backData[0] & 0x0F) == 0x0A:
+            if status == RFIDStatus.OK and backLen == 4 and (backData[0] & 0x0F) == 0x0A:
                 logger.info("Data written")
             else:
                 logger.error("Error while writing")
@@ -339,9 +306,7 @@ class MFRC522:
             logger.error("Error while writing")
 
     def MFRC522_Init(self) -> None:
-        """
-        Initialize the MFRC522 RFID reader.
-        """
+        """Initialize the MFRC522 RFID reader."""
         GPIO.output(self.NRSTPD, 1)
         self.MFRC522_Reset()
 
@@ -355,9 +320,7 @@ class MFRC522:
         self.AntennaOn()
 
     def GPIO_CLEAN(self) -> None:
-        """
-        Clean up GPIO.
-        """
+        """Clean up GPIO."""
         GPIO.cleanup()
 
 
@@ -365,73 +328,44 @@ class RFIDReader:
     """High-level interface for RFID operations."""
 
     def __init__(self, spd: int = 1000000) -> None:
-        """
-        Initialize the RFID reader.
-
-        Args:
-            spd: SPI speed in Hz (default: 1MHz)
-        """
+        """Initialize the RFID reader."""
         self.rfid = MFRC522(spd)
 
     def read_card(self) -> Tuple[int, List[int]]:
-        """
-        Read the ID of an RFID card.
-
-        Returns:
-            Tuple of (status, uid) where status is MI_OK if successful
-            and uid is a list of 5 integers representing the card's UID.
-        """
+        """Read the ID of an RFID card."""
         try:
             status, tag_type = self.rfid.MFRC522_Request(self.rfid.PICC_REQIDL)
-            if status == self.rfid.MI_OK:
+            if status == RFIDStatus.OK:
                 status, uid = self.rfid.MFRC522_Anticoll()
-                if status == self.rfid.MI_OK:
+                if status == RFIDStatus.OK:
                     return status, uid
             return status, []
         except Exception as e:
             logger.error("Error reading card: %s", e)
-            return self.rfid.MI_ERR, []
+            return RFIDStatus.ERROR, []
 
     def authenticate_card(self, uid: List[int]) -> Tuple[int, Optional[str]]:
-        """
-        Authenticate an RFID card based on its UID.
-
-        Args:
-            uid: List of 5 integers representing the card's UID
-
-        Returns:
-            Tuple of (status, role) where status is MI_OK if authenticated
-            and role is the card's role if authenticated, None otherwise.
-        """
+        """Authenticate an RFID card based on its UID."""
         try:
             if len(uid) != 5:
                 logger.warning("Invalid UID length: %d", len(uid))
-                return self.rfid.MI_ERR, None
+                return RFIDStatus.ERROR, None
 
-            # Create a properly typed tuple from the UID list
             card_uid_tuple: Tuple[int, int, int, int, int] = (uid[0], uid[1], uid[2], uid[3], uid[4])
             card_info = AUTHORIZED_CARDS.get(card_uid_tuple)
 
             if card_info:
                 logger.info("Card authenticated: %s (%s)", card_info.name, card_info.role)
-                return self.rfid.MI_OK, card_info.role
+                return RFIDStatus.OK, card_info.role
 
             logger.warning("Unauthorized card detected")
-            return self.rfid.MI_ERR, None
+            return RFIDStatus.ERROR, None
         except Exception as e:
             logger.error("Error authenticating card: %s", e)
-            return self.rfid.MI_ERR, None
+            return RFIDStatus.ERROR, None
 
     def read_card_data(self, block_addr: int) -> bool:
-        """
-        Read data from a block on the RFID card.
-
-        Args:
-            block_addr: Block address to read from
-
-        Returns:
-            True if read was successful, False otherwise
-        """
+        """Read data from a block on the RFID card."""
         try:
             self.rfid.MFRC522_Read(block_addr)
             return True
@@ -440,16 +374,7 @@ class RFIDReader:
             return False
 
     def write_card_data(self, block_addr: int, data: List[int]) -> bool:
-        """
-        Write data to a block on the RFID card.
-
-        Args:
-            block_addr: Block address to write to
-            data: List of integers to write
-
-        Returns:
-            True if write was successful, False otherwise
-        """
+        """Write data to a block on the RFID card."""
         try:
             self.rfid.MFRC522_Write(block_addr, data)
             return True
@@ -470,10 +395,10 @@ if __name__ == "__main__":
     try:
         while True:
             status, uid = rfid_reader.read_card()
-            if status == rfid_reader.rfid.MI_OK:
+            if status == RFIDStatus.OK:
                 logger.info("Card detected: %s", uid)
                 status, role = rfid_reader.authenticate_card(uid)
-                if status == rfid_reader.rfid.MI_OK:
+                if status == RFIDStatus.OK:
                     logger.info("Authenticated as: %s", role)
                 else:
                     logger.error("Authentication failed")
