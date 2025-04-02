@@ -5,17 +5,23 @@ from dotenv import load_dotenv
 # Load environment variables from a .env file located in the same directory or project root.
 load_dotenv()
 
-def load_config(config_file="config/config.yaml"):
+def load_config(config_file=None):
     """
     Loads the configuration from a YAML file and replaces placeholders
     with values from environment variables.
 
     Args:
-        config_file (str): Path to the YAML configuration file.
+        config_file (str, optional): Path to the YAML configuration file.
+            If None, uses the default path relative to the project root.
 
     Returns:
         dict: A dictionary with configuration settings.
     """
+    if config_file is None:
+        # Get the absolute path to the config file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        config_file = os.path.join(current_dir, "config.yaml")
+
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 

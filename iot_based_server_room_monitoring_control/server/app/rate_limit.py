@@ -5,7 +5,8 @@ import redis
 import os
 from dotenv import load_dotenv
 import logging
-from typing import Optional
+from typing import Optional, Callable
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -86,3 +87,30 @@ rate_limiter = RateLimiter()
 def get_rate_limiter() -> RateLimiter:
     """Dependency to get rate limiter instance"""
     return rate_limiter
+
+def rate_limit(requests: int = 100, window: int = 60):
+    """
+    Decorator for rate limiting endpoints.
+    
+    Args:
+        requests (int): Number of requests allowed in the time window
+        window (int): Time window in seconds
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            request = next((arg for arg in args if isinstance(arg, Request)), None)
+            if not request:
+                raise ValueError("Request object not found in function arguments")
+
+            if not await rate_limiter.check_rate_limit(request):
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Too many requests",
+                        "message": "Please try again later"
+                    }
+                )
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
