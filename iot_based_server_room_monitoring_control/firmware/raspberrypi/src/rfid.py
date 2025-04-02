@@ -6,17 +6,17 @@ It provides functions to initialize the reader, read and write data to RFID tags
 and handle authentication and communication with the tags.
 
 Dependencies:
-    - RPi.GPIO library (install with `pip install RPi.GPIO`)
-    - spidev library (install with `pip install spidev`)
+    - RPi.GPIO library (install with `pip install RPi.GPIO`) - Only on Raspberry Pi
+    - spidev library (install with `pip install spidev`) - Only on Raspberry Pi
 """
 
-import RPi.GPIO as GPIO
-import spidev
 import logging
 import time
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 from enum import IntEnum
+import platform
+import random
 
 # Configure logging
 logging.basicConfig(
@@ -44,8 +44,68 @@ AUTHORIZED_CARDS: Dict[Tuple[int, int, int, int, int], CardInfo] = {
     (20, 38, 121, 207, 132): CardInfo("Card C", "maintenance")
 }
 
+# Check if running on Raspberry Pi
+try:
+    IS_RASPBERRY_PI = platform.machine().startswith('arm')
+    if IS_RASPBERRY_PI:
+        import RPi.GPIO as GPIO
+        import spidev
+        logger.info("Running on Raspberry Pi with real RFID hardware")
+    else:
+        logger.warning("Not running on Raspberry Pi, using mock implementation")
+except ImportError:
+    IS_RASPBERRY_PI = False
+    logger.warning("Running in mock mode - no Raspberry Pi RFID hardware detected")
+
+class MockMFRC522:
+    """Mock MFRC522 RFID reader implementation for non-Raspberry Pi systems."""
+    
+    def __init__(self, spd: int = 1000000) -> None:
+        """Initialize the mock RFID reader."""
+        self.spd = spd
+        self._last_read_time = 0
+        self._read_cooldown = 1.0  # seconds
+        logger.info("Mock MFRC522 initialized")
+        
+    def MFRC522_Request(self, reqMode: int) -> Tuple[int, int]:
+        """Mock tag request."""
+        return RFIDStatus.OK, 0x10
+        
+    def MFRC522_Anticoll(self) -> Tuple[int, List[int]]:
+        """Mock anti-collision detection."""
+        # Simulate random card detection
+        if random.random() < 0.3:  # 30% chance of detecting a card
+            # Generate a random UID
+            uid = [random.randint(0, 255) for _ in range(5)]
+            return RFIDStatus.OK, uid
+        return RFIDStatus.NO_TAG, []
+        
+    def MFRC522_SelectTag(self, serNum: List[int]) -> int:
+        """Mock tag selection."""
+        return 0x08
+        
+    def MFRC522_Auth(self, authMode: int, blockAddr: int, sectorKey: List[int], serNum: List[int]) -> int:
+        """Mock authentication."""
+        return RFIDStatus.OK
+        
+    def MFRC522_Read(self, blockAddr: int) -> None:
+        """Mock read operation."""
+        logger.debug("Mock read from block %d", blockAddr)
+        
+    def MFRC522_Write(self, blockAddr: int, writeData: List[int]) -> None:
+        """Mock write operation."""
+        logger.debug("Mock write to block %d", blockAddr)
+        
+    def MFRC522_Init(self) -> None:
+        """Mock initialization."""
+        logger.debug("Mock MFRC522 initialization")
+        
+    def GPIO_CLEAN(self) -> None:
+        """Mock GPIO cleanup."""
+        pass
+
 class MFRC522:
-    """MFRC522 RFID reader implementation."""
+    """MFRC522 RFID reader implementation for Raspberry Pi."""
 
     # Pin configuration
     NRSTPD = 22
@@ -322,13 +382,15 @@ class MFRC522:
         """Clean up GPIO."""
         GPIO.cleanup()
 
-
 class RFIDReader:
     """High-level interface for RFID operations."""
 
     def __init__(self, spd: int = 1000000) -> None:
         """Initialize the RFID reader."""
-        self.rfid = MFRC522(spd)
+        if IS_RASPBERRY_PI:
+            self.rfid = MFRC522(spd)
+        else:
+            self.rfid = MockMFRC522(spd)
 
     def read_card(self) -> Tuple[int, List[int]]:
         """Read the ID of an RFID card."""

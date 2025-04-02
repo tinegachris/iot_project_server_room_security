@@ -6,19 +6,21 @@ It provides functionality for capturing images and recording videos with configu
 and includes cloud storage integration for remote access to captured media.
 
 Dependencies:
-    - picamera (install with `pip install picamera`)
+    - picamera2 (install with `pip install picamera2`) - Only on Raspberry Pi
     - requests (install with `pip install requests`)
     - python-dotenv (install with `pip install python-dotenv`)
+    - PIL (install with `pip install pillow`) - For mock implementation
 """
 
 import time
 import os
 import logging
 import requests
+import datetime
 from dataclasses import dataclass
-from typing import Optional, Tuple
-from picamera import PiCamera
+from typing import Optional, Tuple, Dict, Any
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +32,27 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Check if running on Raspberry Pi
+try:
+    import platform
+    IS_RASPBERRY_PI = platform.machine().startswith('arm')
+    if IS_RASPBERRY_PI:
+        from picamera2 import Picamera2
+        from picamera2.encoders import H264Encoder
+        from picamera2.outputs import FileOutput
+        from picamera2.controls import Controls
+        logger.info("Running on Raspberry Pi with real camera hardware")
+    else:
+        logger.warning("Not running on Raspberry Pi, using mock implementation")
+except ImportError:
+    IS_RASPBERRY_PI = False
+    logger.warning("Running in mock mode - no Raspberry Pi camera hardware detected")
+
+# Get the user's home directory for storing files
+USER_HOME = os.path.expanduser('~')
+DEFAULT_OUTPUT_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'videos')
+DEFAULT_IMAGE_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'images')
+
 @dataclass
 class CameraConfig:
     """Configuration for camera settings."""
@@ -37,8 +60,74 @@ class CameraConfig:
     framerate: int = 30
     rotation: int = 0
     brightness: int = 50
-    output_dir: str = "/home/pi/Videos"
-    image_dir: str = "/home/pi/Pictures"
+    output_dir: str = DEFAULT_OUTPUT_DIR
+    image_dir: str = DEFAULT_IMAGE_DIR
+
+class MockCamera:
+    """Mock camera implementation for non-Raspberry Pi systems."""
+    
+    def __init__(self, config: CameraConfig):
+        """Initialize the mock camera."""
+        self.config = config
+        self._setup_directories()
+        
+    def _setup_directories(self) -> None:
+        """Create output directories if they don't exist."""
+        try:
+            # Create parent directory first
+            os.makedirs(os.path.dirname(self.config.output_dir), exist_ok=True)
+            os.makedirs(os.path.dirname(self.config.image_dir), exist_ok=True)
+            
+            # Then create the specific directories
+            os.makedirs(self.config.output_dir, exist_ok=True)
+            os.makedirs(self.config.image_dir, exist_ok=True)
+            logger.info("Output directories created successfully")
+        except Exception as e:
+            logger.error("Failed to create output directories: %s", e)
+            raise
+            
+    def _create_mock_image(self, file_path: str) -> None:
+        """Create a mock image for testing."""
+        width, height = self.config.resolution
+        image = Image.new('RGB', (width, height), color=(73, 109, 137))
+        draw = ImageDraw.Draw(image)
+        
+        # Add some text to the image
+        try:
+            font = ImageFont.truetype("Arial", 36)
+        except IOError:
+            font = ImageFont.load_default()
+            
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        text = f"Mock Image - {timestamp}"
+        text_width, text_height = draw.textsize(text, font=font) if hasattr(draw, 'textsize') else (width//2, 36)
+        position = ((width - text_width) // 2, (height - text_height) // 2)
+        draw.text(position, text, fill=(255, 255, 255), font=font)
+        
+        # Save the image
+        image.save(file_path)
+        logger.info("Mock image created: %s", file_path)
+        
+    def _create_mock_video(self, file_path: str, duration: int) -> None:
+        """Create a mock video file for testing."""
+        # Create a simple text file as a placeholder for video
+        with open(file_path, 'w') as f:
+            f.write(f"Mock video file - Duration: {duration} seconds\n")
+            f.write(f"Created at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Resolution: {self.config.resolution[0]}x{self.config.resolution[1]}\n")
+            f.write(f"Framerate: {self.config.framerate}\n")
+        logger.info("Mock video file created: %s", file_path)
+        
+    def capture_file(self, file_path: str, is_video: bool = False, duration: int = 10) -> None:
+        """Capture an image or video file."""
+        if is_video:
+            self._create_mock_video(file_path, duration)
+        else:
+            self._create_mock_image(file_path)
+            
+    def close(self) -> None:
+        """Clean up resources."""
+        pass
 
 class CameraManager:
     """Manages camera operations and cloud storage integration."""
@@ -47,37 +136,34 @@ class CameraManager:
         """Initialize the camera manager with optional configuration."""
         self.config = config or CameraConfig()
         self.cloud_url = os.getenv("CLOUD_STORAGE_URL")
-        self._setup_directories()
-        self._check_camera()
+        
+        if IS_RASPBERRY_PI:
+            self.camera = Picamera2()
+            self._setup_camera()
+        else:
+            self.camera = MockCamera(self.config)
 
-    def _setup_directories(self) -> None:
-        """Create output directories if they don't exist."""
+    def _setup_camera(self) -> None:
+        """Setup the camera with current configuration."""
+        if not IS_RASPBERRY_PI:
+            return
+            
         try:
-            os.makedirs(self.config.output_dir, exist_ok=True)
-            os.makedirs(self.config.image_dir, exist_ok=True)
-            logger.info("Output directories created successfully")
-        except Exception as e:
-            logger.error("Failed to create output directories: %s", e)
-            raise
-
-    def _check_camera(self) -> None:
-        """Verify camera availability."""
-        try:
-            with PiCamera() as camera:
-                camera.close()
+            # Configure camera
+            camera_config = self.camera.create_preview_configuration(
+                main={"size": self.config.resolution},
+                controls={
+                    "FrameDurationLimits": (int(1000000/self.config.framerate), int(1000000/self.config.framerate)),
+                    "Brightness": self.config.brightness,
+                    "Rotation": self.config.rotation
+                }
+            )
+            self.camera.configure(camera_config)
+            self.camera.start()
             logger.info("Camera initialized successfully")
         except Exception as e:
             logger.error("Camera initialization failed: %s", e)
             raise
-
-    def _configure_camera(self, camera: PiCamera) -> None:
-        """Configure camera with current settings."""
-        camera.resolution = self.config.resolution
-        camera.framerate = self.config.framerate
-        camera.rotation = self.config.rotation
-        camera.brightness = self.config.brightness
-        logger.debug("Camera configured with: resolution=%s, framerate=%d, rotation=%d, brightness=%d",
-                    self.config.resolution, self.config.framerate, self.config.rotation, self.config.brightness)
 
     def _upload_to_cloud(self, file_path: str) -> Optional[str]:
         """Upload a file to cloud storage."""
@@ -107,11 +193,11 @@ class CameraManager:
         file_path = os.path.join(self.config.image_dir, f"image_{timestamp}.jpg")
 
         try:
-            with PiCamera() as camera:
-                self._configure_camera(camera)
-                time.sleep(2)  # Warm-up time
-                camera.capture(file_path)
-                logger.info("Image captured: %s", file_path)
+            if IS_RASPBERRY_PI:
+                self.camera.capture_file(file_path)
+            else:
+                self.camera.capture_file(file_path, is_video=False)
+            logger.info("Image captured: %s", file_path)
 
             cloud_url = self._upload_to_cloud(file_path)
             return file_path, cloud_url
@@ -133,14 +219,18 @@ class CameraManager:
         file_path = os.path.join(self.config.output_dir, f"video_{timestamp}.h264")
 
         try:
-            with PiCamera() as camera:
-                self._configure_camera(camera)
-                time.sleep(2)  # Warm-up time
-
-                camera.start_recording(file_path)
-                camera.wait_recording(duration)
-                camera.stop_recording()
-                logger.info("Video recorded: %s", file_path)
+            if IS_RASPBERRY_PI:
+                # Configure video recording
+                encoder = H264Encoder()
+                output = FileOutput(file_path)
+                
+                # Start recording
+                self.camera.start_recording(encoder, output)
+                time.sleep(duration)
+                self.camera.stop_recording()
+            else:
+                self.camera.capture_file(file_path, is_video=True, duration=duration)
+            logger.info("Video recorded: %s", file_path)
 
             cloud_url = self._upload_to_cloud(file_path)
             return file_path, cloud_url
@@ -151,8 +241,21 @@ class CameraManager:
     def update_config(self, new_config: CameraConfig) -> None:
         """Update camera configuration."""
         self.config = new_config
-        self._setup_directories()
+        if IS_RASPBERRY_PI:
+            self._setup_camera()
         logger.info("Camera configuration updated")
+
+    def cleanup(self) -> None:
+        """Clean up camera resources."""
+        try:
+            if IS_RASPBERRY_PI:
+                self.camera.stop()
+                self.camera.close()
+            else:
+                self.camera.close()
+            logger.info("Camera resources cleaned up")
+        except Exception as e:
+            logger.error("Error during camera cleanup: %s", e)
 
 def main() -> None:
     """Test the camera functionality."""
@@ -171,6 +274,8 @@ def main() -> None:
 
     except Exception as e:
         logger.error("Test failed: %s", e)
+    finally:
+        camera.cleanup()
 
 if __name__ == "__main__":
     main()
