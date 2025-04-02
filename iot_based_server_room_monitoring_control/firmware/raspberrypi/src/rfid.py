@@ -1,4 +1,3 @@
-#!/home/admin/iot_project_server_room_security/venv/bin/python3
 """
 rfid.py
 
