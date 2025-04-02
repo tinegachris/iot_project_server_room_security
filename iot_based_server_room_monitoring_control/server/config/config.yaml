@@ -136,3 +136,8 @@ security:
   allowed_ips: "${ALLOWED_IPS}"
   api_key_header: "X-API-Key"
   api_key_required: true
+
+notifications:
+  fcm:
+    server_key: "${FCM_SERVER_KEY}"
+    device_token: "${FCM_DEVICE_TOKEN}"

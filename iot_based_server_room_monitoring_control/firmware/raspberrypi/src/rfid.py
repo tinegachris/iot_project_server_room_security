@@ -60,11 +60,28 @@ except ImportError:
 class MockMFRC522:
     """Mock MFRC522 RFID reader implementation for non-Raspberry Pi systems."""
     
+    # Command definitions
+    PICC_REQIDL = 0x26
+    PICC_REQALL = 0x52
+    PICC_ANTICOLL = 0x93
+    PICC_SELECTTAG = 0x93
+    PICC_AUTHENT1A = 0x60
+    PICC_AUTHENT1B = 0x61
+    PICC_READ = 0x30
+    PICC_WRITE = 0xA0
+    PICC_DECREMENT = 0xC0
+    PICC_INCREMENT = 0xC1
+    PICC_RESTORE = 0xC2
+    PICC_TRANSFER = 0xB0
+    PICC_HALT = 0x50
+    
     def __init__(self, spd: int = 1000000) -> None:
         """Initialize the mock RFID reader."""
         self.spd = spd
         self._last_read_time = 0
         self._read_cooldown = 1.0  # seconds
+        # Get list of authorized UIDs for random selection
+        self._authorized_uids = list(AUTHORIZED_CARDS.keys())
         logger.info("Mock MFRC522 initialized")
         
     def MFRC522_Request(self, reqMode: int) -> Tuple[int, int]:
@@ -75,9 +92,17 @@ class MockMFRC522:
         """Mock anti-collision detection."""
         # Simulate random card detection
         if random.random() < 0.3:  # 30% chance of detecting a card
-            # Generate a random UID
-            uid = [random.randint(0, 255) for _ in range(5)]
-            return RFIDStatus.OK, uid
+            # 70% chance of detecting an authorized card, 30% chance of random card
+            if random.random() < 0.8:
+                # Select a random authorized card
+                uid = list(random.choice(self._authorized_uids))
+                logger.debug("Mock detected authorized card: %s", uid)
+                return RFIDStatus.OK, uid
+            else:
+                # Generate a random unauthorized UID
+                uid = [random.randint(0, 255) for _ in range(5)]
+                logger.debug("Mock detected unauthorized card: %s", uid)
+                return RFIDStatus.OK, uid
         return RFIDStatus.NO_TAG, []
         
     def MFRC522_SelectTag(self, serNum: List[int]) -> int:

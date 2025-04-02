@@ -136,12 +136,35 @@ class CameraManager:
         """Initialize the camera manager with optional configuration."""
         self.config = config or CameraConfig()
         self.cloud_url = os.getenv("CLOUD_STORAGE_URL")
+        self._validate_cloud_config()
         
         if IS_RASPBERRY_PI:
             self.camera = Picamera2()
             self._setup_camera()
         else:
             self.camera = MockCamera(self.config)
+
+    def _validate_cloud_config(self) -> None:
+        """Validate cloud storage configuration."""
+        if not self.cloud_url:
+            logger.warning("Cloud storage URL not configured. Media will be stored locally only.")
+            return
+            
+        if not self.cloud_url.startswith(('http://', 'https://')):
+            logger.warning("Invalid cloud storage URL format. Must start with http:// or https://")
+            self.cloud_url = None
+            return
+            
+        try:
+            # Test the URL format
+            from urllib.parse import urlparse
+            parsed = urlparse(self.cloud_url)
+            if not parsed.netloc:
+                raise ValueError("Invalid URL format")
+            logger.info("Cloud storage URL validated successfully")
+        except Exception as e:
+            logger.warning("Invalid cloud storage URL: %s. Media will be stored locally only.", str(e))
+            self.cloud_url = None
 
     def _setup_camera(self) -> None:
         """Setup the camera with current configuration."""
@@ -168,18 +191,28 @@ class CameraManager:
     def _upload_to_cloud(self, file_path: str) -> Optional[str]:
         """Upload a file to cloud storage."""
         if not self.cloud_url:
-            logger.warning("Cloud storage URL not configured")
+            logger.debug("Cloud storage URL not configured, skipping upload")
             return None
 
         try:
+            if not os.path.exists(file_path):
+                logger.error("File not found for upload: %s", file_path)
+                return None
+                
             with open(file_path, 'rb') as file:
                 response = requests.post(self.cloud_url, files={'file': file})
                 response.raise_for_status()
                 cloud_url = response.json().get('url')
+                if not cloud_url:
+                    logger.error("No URL returned from cloud storage")
+                    return None
                 logger.info("File uploaded successfully: %s", cloud_url)
                 return cloud_url
+        except requests.exceptions.RequestException as e:
+            logger.error("Failed to upload file: %s", str(e))
+            return None
         except Exception as e:
-            logger.error("Failed to upload file: %s", e)
+            logger.error("Unexpected error during file upload: %s", str(e))
             return None
 
     def capture_image(self) -> Tuple[str, Optional[str]]:

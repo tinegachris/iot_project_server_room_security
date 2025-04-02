@@ -52,15 +52,96 @@ class NotificationManager:
         self._setup_fcm()
         logger.info("Notification manager initialized")
 
+    def _validate_twilio_credentials(self, sid: str, token: str) -> bool:
+        """Validate Twilio credentials format."""
+        if not sid or sid == "your-twilio-sid":
+            return False
+        if not token or len(token) < 32:  # Twilio auth tokens are typically longer
+            return False
+        return True
+
+    def _validate_email_config(self, server: str, port: int, username: str, password: str) -> bool:
+        """Validate email configuration."""
+        if not server or server == "smtp.example.com":
+            return False
+        if not username or not password:
+            return False
+        if port < 1 or port > 65535:
+            return False
+        return True
+
+    def _validate_fcm_config(self, key: str, token: str) -> bool:
+        """Validate FCM configuration."""
+        if not key or not key.startswith("AAAA"):
+            return False
+        if not token or len(token) < 100:  # FCM tokens are typically long
+            return False
+        return True
+
+    def _handle_twilio_error(self, error: Exception) -> None:
+        """Handle Twilio-specific errors and provide guidance."""
+        error_str = str(error)
+        if "21608" in error_str:
+            logger.error("""
+            Twilio Trial Account Error:
+            - Your phone number is not verified
+            - Please verify your number at: https://www.twilio.com/console/phone-numbers/verified
+            - Or upgrade to a paid account to send to unverified numbers
+            """)
+        elif "20003" in error_str:
+            logger.error("""
+            Twilio Authentication Error:
+            - Invalid Account SID or Auth Token
+            - Please check your TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN
+            """)
+        else:
+            logger.error("Twilio error: %s", error_str)
+
+    def _handle_email_error(self, error: Exception) -> None:
+        """Handle email-specific errors and provide guidance."""
+        error_str = str(error)
+        if "535" in error_str and "gmail" in self.smtp_server.lower():
+            logger.error("""
+            Gmail Authentication Error:
+            - Username and password not accepted
+            - For Gmail, you need to use an App Password
+            - Steps to create an App Password:
+              1. Enable 2-Step Verification in your Google Account
+              2. Go to Google Account > Security > App Passwords
+              3. Generate a new App Password for this application
+              4. Use the generated password in SMTP_PASSWORD
+            """)
+        elif "535" in error_str:
+            logger.error("""
+            SMTP Authentication Error:
+            - Invalid username or password
+            - Please check your SMTP_USERNAME and SMTP_PASSWORD
+            """)
+        else:
+            logger.error("Email error: %s", error_str)
+
     def _setup_twilio(self) -> None:
         """Setup Twilio configuration."""
         self.twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
         self.twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
         self.twilio_from = os.getenv("TWILIO_FROM_NUMBER")
         self.twilio_to = os.getenv("TWILIO_TO_NUMBER")
-        self.twilio_client = Client(self.twilio_sid, self.twilio_token) if all([
-            self.twilio_sid, self.twilio_token, self.twilio_from, self.twilio_to
-        ]) else None
+        
+        if all([self.twilio_sid, self.twilio_token, self.twilio_from, self.twilio_to]):
+            if self._validate_twilio_credentials(self.twilio_sid, self.twilio_token):
+                self.twilio_client = Client(self.twilio_sid, self.twilio_token)
+                logger.info("Twilio SMS configured successfully")
+            else:
+                self.twilio_client = None
+                logger.warning("Invalid Twilio credentials format")
+        else:
+            self.twilio_client = None
+            missing = []
+            if not self.twilio_sid or self.twilio_sid == "your-twilio-sid": missing.append("TWILIO_ACCOUNT_SID")
+            if not self.twilio_token: missing.append("TWILIO_AUTH_TOKEN")
+            if not self.twilio_from: missing.append("TWILIO_FROM_NUMBER")
+            if not self.twilio_to: missing.append("TWILIO_TO_NUMBER")
+            logger.warning("Twilio SMS not configured. Missing or invalid environment variables: %s", ", ".join(missing))
 
     def _setup_email(self) -> None:
         """Setup email configuration."""
@@ -70,21 +151,49 @@ class NotificationManager:
         self.smtp_password = os.getenv("SMTP_PASSWORD")
         self.email_from = os.getenv("EMAIL_FROM")
         self.email_to = os.getenv("EMAIL_TO")
-        self.email_configured = all([
-            self.smtp_server, self.smtp_port, self.smtp_username,
-            self.smtp_password, self.email_from, self.email_to
-        ])
+        
+        if all([self.smtp_server, self.smtp_port, self.smtp_username,
+                self.smtp_password, self.email_from, self.email_to]):
+            if self._validate_email_config(self.smtp_server, self.smtp_port, 
+                                        self.smtp_username, self.smtp_password):
+                self.email_configured = True
+                logger.info("Email notifications configured successfully")
+            else:
+                self.email_configured = False
+                logger.warning("Invalid email configuration format")
+        else:
+            self.email_configured = False
+            missing = []
+            if not self.smtp_server or self.smtp_server == "smtp.example.com": missing.append("SMTP_SERVER")
+            if not self.smtp_username: missing.append("SMTP_USERNAME")
+            if not self.smtp_password: missing.append("SMTP_PASSWORD")
+            if not self.email_from: missing.append("EMAIL_FROM")
+            if not self.email_to: missing.append("EMAIL_TO")
+            logger.warning("Email notifications not configured. Missing or invalid environment variables: %s", ", ".join(missing))
 
     def _setup_fcm(self) -> None:
         """Setup Firebase Cloud Messaging configuration."""
         self.fcm_key = os.getenv("FCM_SERVER_KEY")
         self.fcm_token = os.getenv("FCM_DEVICE_TOKEN")
-        self.fcm_configured = all([self.fcm_key, self.fcm_token])
+        
+        if all([self.fcm_key, self.fcm_token]):
+            if self._validate_fcm_config(self.fcm_key, self.fcm_token):
+                self.fcm_configured = True
+                logger.info("FCM notifications configured successfully")
+            else:
+                self.fcm_configured = False
+                logger.warning("Invalid FCM configuration format")
+        else:
+            self.fcm_configured = False
+            missing = []
+            if not self.fcm_key or not self.fcm_key.startswith("AAAA"): missing.append("FCM_SERVER_KEY")
+            if not self.fcm_token: missing.append("FCM_DEVICE_TOKEN")
+            logger.warning("FCM notifications not configured. Missing or invalid environment variables: %s", ", ".join(missing))
 
     def _send_sms(self, alert: AlertData) -> Optional[str]:
         """Send SMS alert via Twilio."""
         if not self.twilio_client:
-            logger.warning("Twilio not configured, skipping SMS alert")
+            logger.warning("SMS alert skipped - Twilio not configured")
             return None
 
         try:
@@ -100,13 +209,13 @@ class NotificationManager:
             logger.info("SMS alert sent successfully: %s", sent_msg.sid)
             return sent_msg.sid
         except Exception as e:
-            logger.error("Failed to send SMS alert: %s", e)
+            self._handle_twilio_error(e)
             return None
 
     def _send_email(self, alert: AlertData) -> bool:
         """Send email alert via SMTP."""
         if not self.email_configured:
-            logger.warning("Email not configured, skipping email alert")
+            logger.warning("Email alert skipped - Email not configured")
             return False
 
         try:
@@ -124,13 +233,20 @@ class NotificationManager:
             logger.info("Email alert sent successfully")
             return True
         except Exception as e:
-            logger.error("Failed to send email alert: %s", e)
+            self._handle_email_error(e)
             return False
 
     def _send_fcm(self, alert: AlertData) -> bool:
         """Send push notification via Firebase Cloud Messaging."""
         if not self.fcm_configured:
-            logger.warning("FCM not configured, skipping push notification")
+            logger.warning("""
+            FCM alert skipped - FCM not configured
+            To configure FCM:
+            1. Create a Firebase project
+            2. Get the Server Key from Project Settings > Cloud Messaging
+            3. Get the Device Token from your mobile app
+            4. Set FCM_SERVER_KEY and FCM_DEVICE_TOKEN environment variables
+            """)
             return False
 
         try:
@@ -159,8 +275,24 @@ class NotificationManager:
             response.raise_for_status()
             logger.info("FCM alert sent successfully")
             return True
+        except requests.exceptions.RequestException as e:
+            if e.response and e.response.status_code == 404:
+                logger.error("""
+                FCM Error: Invalid device token
+                - The FCM_DEVICE_TOKEN is not valid
+                - Make sure you're using a valid token from your mobile app
+                """)
+            elif e.response and e.response.status_code == 401:
+                logger.error("""
+                FCM Error: Invalid server key
+                - The FCM_SERVER_KEY is not valid
+                - Make sure you're using the correct key from Firebase Console
+                """)
+            else:
+                logger.error("FCM error: %s", str(e))
+            return False
         except Exception as e:
-            logger.error("Failed to send FCM alert: %s", e)
+            logger.error("Unexpected FCM error: %s", str(e))
             return False
 
     def _format_message(self, alert: AlertData) -> str:
