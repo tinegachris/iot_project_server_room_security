@@ -171,3 +171,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# VSCode
+.vscode/
+
+# Android Studio
+.android/
+
+# Xcode
+.xcode/
