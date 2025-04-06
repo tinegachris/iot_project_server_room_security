@@ -12,21 +12,29 @@ Dependencies:
     - python-dotenv: For environment variable management
 """
 
+# import os # No longer needed here
+
+# Force GPIOZero to use lgpio factory - MUST be set before importing gpiozero
+# os.environ['GPIOZERO_PIN_FACTORY'] = 'lgpio' # Removed - Attempting to use RPi.GPIO fallback
+
 import time
 import logging
 import signal
 import sys
 import json
-import os
+import os # Re-import where it was originally
+import threading
 from pathlib import Path
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, ClassVar, Tuple
 from dotenv import load_dotenv
+from werkzeug.serving import run_simple
 
 from .sensors import SensorManager
 from .camera import CameraManager, CameraConfig
 from .notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
+from .api_server import create_pi_api_server
 
 # Load environment variables
 load_dotenv()
@@ -87,6 +95,8 @@ class ServerRoomMonitor:
         self.running = True
         self.last_health_check = datetime.now()
         self.setup_signal_handlers()
+        self.api_thread: Optional[threading.Thread] = None
+        self.api_server = None
 
     def _load_config(self, config_path: str) -> SystemConfig:
         """Load system configuration from file and environment variables."""
@@ -111,6 +121,7 @@ class ServerRoomMonitor:
         logger.info("Shutdown signal received. Cleaning up...")
         self.running = False
         self.cleanup()
+        logger.info("Attempting to shut down API server...")
 
     def perform_health_check(self) -> None:
         """Perform system health check and send status report."""
@@ -181,8 +192,43 @@ class ServerRoomMonitor:
             if self.sensor_manager:
                 self.sensor_manager.cleanup()
             logger.info("System resources cleaned up successfully")
+
+            # Attempt to clean up GPIO if door lock used it (add if needed)
+            # try:
+            #     import RPi.GPIO as GPIO
+            #     GPIO.cleanup()
+            # except Exception as e:
+            #     logger.warning(f"Could not cleanup GPIO: {e}")
+
         except Exception as e:
             logger.error("Error during cleanup: %s", e)
+
+    def start_api_server(self) -> None:
+        if not self.sensor_manager or not self.camera_manager:
+            logger.error("Cannot start API server: Managers not initialized.")
+            return
+
+        try:
+            # Create the Flask app instance, passing the managers
+            self.api_server = create_pi_api_server(self.sensor_manager, self.camera_manager)
+
+            # Run Flask server in a separate thread
+            # Use run_simple from werkzeug for simplicity here
+            # For production, consider waitress or gunicorn
+            host = "0.0.0.0" # Listen on all interfaces
+            port = int(os.getenv("RASPBERRY_PI_API_PORT", "5000")) # Get port from env or default 5000
+
+            self.api_thread = threading.Thread(
+                target=run_simple,
+                args=(host, port, self.api_server),
+                kwargs={"use_reloader": False, "use_debugger": False, "threaded": True},
+                daemon=True # Set as daemon so it exits when main thread exits
+            )
+            self.api_thread.start()
+            logger.info(f"Flask API server started in background thread on http://{host}:{port}")
+
+        except Exception as e:
+            logger.error(f"Failed to start API server thread: {e}", exc_info=True)
 
     def run(self) -> None:
         """Main system loop."""
@@ -190,13 +236,21 @@ class ServerRoomMonitor:
 
         try:
             # Initialize system components
-            self.sensor_manager = SensorManager(verbose=True)
+            logger.info("Initializing SensorManager...")
+            self.sensor_manager = SensorManager(camera_config=self.config.camera_config, verbose=True)
+            logger.info("Initializing CameraManager...")
             self.camera_manager = CameraManager(self.config.camera_config)
+            logger.info("Initializing NotificationManager...")
             self.notification_manager = NotificationManager()
 
-            # Start sensor monitoring
+            # Start sensor monitoring threads (part of SensorManager init or a separate start method)
             if self.sensor_manager:
+                logger.info("Starting SensorManager monitoring threads...")
                 self.sensor_manager.start()
+
+            # Start the Flask API server in a background thread
+            logger.info("Starting API server thread...")
+            self.start_api_server()
 
             retry_count = 0
             while self.running:
