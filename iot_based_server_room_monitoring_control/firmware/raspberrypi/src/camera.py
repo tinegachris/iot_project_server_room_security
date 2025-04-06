@@ -16,11 +16,14 @@ import time
 import os
 import logging
 import requests
-import datetime
+import datetime as dt
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Any
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
+import atexit
+import io
 
 # Configure logging
 logging.basicConfig(
@@ -35,7 +38,7 @@ load_dotenv()
 # Check if running on Raspberry Pi
 try:
     import platform
-    IS_RASPBERRY_PI = platform.machine().startswith('arm')
+    IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
     if IS_RASPBERRY_PI:
         from picamera2 import Picamera2
         from picamera2.encoders import H264Encoder
@@ -98,7 +101,7 @@ class MockCamera:
         except IOError:
             font = ImageFont.load_default()
             
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         text = f"Mock Image - {timestamp}"
         text_width, text_height = draw.textsize(text, font=font) if hasattr(draw, 'textsize') else (width//2, 36)
         position = ((width - text_width) // 2, (height - text_height) // 2)
@@ -113,7 +116,7 @@ class MockCamera:
         # Create a simple text file as a placeholder for video
         with open(file_path, 'w') as f:
             f.write(f"Mock video file - Duration: {duration} seconds\n")
-            f.write(f"Created at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Created at: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Resolution: {self.config.resolution[0]}x{self.config.resolution[1]}\n")
             f.write(f"Framerate: {self.config.framerate}\n")
         logger.info("Mock video file created: %s", file_path)
@@ -143,6 +146,15 @@ class CameraManager:
             self._setup_camera()
         else:
             self.camera = MockCamera(self.config)
+
+        self.is_active = False
+        self.last_image_path: Optional[str] = None
+        self.last_image_time: Optional[datetime] = None
+        self.last_video_path: Optional[str] = None
+        self.last_video_time: Optional[datetime] = None
+        self.error_message: Optional[str] = None
+        self._initialize_camera()
+        atexit.register(self.cleanup)
 
     def _validate_cloud_config(self) -> None:
         """Validate cloud storage configuration."""
@@ -289,6 +301,25 @@ class CameraManager:
             logger.info("Camera resources cleaned up")
         except Exception as e:
             logger.error("Error during camera cleanup: %s", e)
+
+    def _initialize_camera(self) -> None:
+        """Initialize the camera with configured settings."""
+        logger.info("Camera manager started.")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Return the current status of the camera manager."""
+        return {
+            "is_active": self.is_active,
+            "resolution": f"{self.config.resolution[0]}x{self.config.resolution[1]}" if self.config else "N/A",
+            "framerate": self.config.framerate if self.config else "N/A",
+            "rotation": self.config.rotation if self.config else "N/A",
+            "brightness": self.config.brightness if self.config else "N/A",
+            "last_image_time": self.last_image_time.isoformat() if self.last_image_time else None,
+            "last_video_time": self.last_video_time.isoformat() if self.last_video_time else None,
+            "last_image_path": self.last_image_path,
+            "last_video_path": self.last_video_path,
+            "error": self.error_message
+        }
 
 def main() -> None:
     """Test the camera functionality."""
