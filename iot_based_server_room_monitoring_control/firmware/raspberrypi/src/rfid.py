@@ -41,7 +41,7 @@ class CardInfo:
 AUTHORIZED_CARDS: Dict[Tuple[int, int, int, int, int], CardInfo] = {
     (5, 74, 28, 185, 234): CardInfo("Card A", "admin"),
     (83, 164, 247, 164, 164): CardInfo("Card B", "IT staff"),
-    (20, 38, 121, 207, 132): CardInfo("Card C", "maintenance")
+    (20, 38, 121, 207, 132): CardInfo("Card C", "security")
 }
 
 # Check if running on Raspberry Pi
