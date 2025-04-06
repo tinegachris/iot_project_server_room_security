@@ -12,10 +12,10 @@ import threading
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Any
-from motion import MotionSensorHandler, DoorSensorHandler, WindowSensorHandler, SensorConfig
-from rfid import RFIDReader, RFIDStatus, CardInfo
-from camera import CameraManager, CameraConfig
-from notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
+from .motion import MotionSensorHandler, DoorSensorHandler, WindowSensorHandler, SensorConfig
+from .rfid import RFIDReader, RFIDStatus, CardInfo
+from .camera import CameraManager, CameraConfig
+from .notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
 
 # Configure logging
 logging.basicConfig(
