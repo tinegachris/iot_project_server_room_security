@@ -58,13 +58,22 @@ class SystemConfig:
         resolution_str = os.getenv('CAMERA_RESOLUTION', '1920x1080').split('x')
         resolution: Tuple[int, int] = (int(resolution_str[0]), int(resolution_str[1]))
 
+
+
+        # Get the user's home directory for storing files
+        USER_HOME = os.path.expanduser('~')
+        DEFAULT_OUTPUT_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'videos')
+        DEFAULT_IMAGE_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'images')
+
+
+
         camera_config = CameraConfig(
             resolution=resolution,
             framerate=int(os.getenv('VIDEO_FPS', '30')),
             rotation=int(os.getenv('CAMERA_ROTATION', '0')),
             brightness=int(os.getenv('CAMERA_BRIGHTNESS', '50')),
-            output_dir=os.getenv('VIDEO_OUTPUT_DIR', '/home/pi/Videos'),
-            image_dir=os.getenv('IMAGE_OUTPUT_DIR', '/home/pi/Pictures')
+            output_dir=os.getenv('VIDEO_OUTPUT_DIR', DEFAULT_OUTPUT_DIR),
+            image_dir=os.getenv('IMAGE_OUTPUT_DIR', DEFAULT_IMAGE_DIR)
         )
         return cls(camera_config=camera_config)
 

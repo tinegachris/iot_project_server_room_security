@@ -6,9 +6,9 @@ import logging
 import sys
 from typing import Dict, Any
 
-from .database import init_db, check_db_connection
-from .routes import router
-from .rate_limit import rate_limiter
+from iot_based_server_room_monitoring_control.server.app.database import init_db, check_db_connection
+from iot_based_server_room_monitoring_control.server.app.routes import router
+from iot_based_server_room_monitoring_control.server.app.rate_limit import rate_limiter
 
 # Configure logging
 logging.basicConfig(
