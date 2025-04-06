@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Check if running on Raspberry Pi
 try:
-    IS_RASPBERRY_PI = platform.machine().startswith('arm')
+    IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
     if IS_RASPBERRY_PI:
         from gpiozero import MotionSensor as PIRMotionSensor
         from gpiozero import Button as OpenCloseSensor

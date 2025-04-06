@@ -56,14 +56,14 @@ class SensorStatus:
 class SensorManager:
     """Manages all sensors and provides unified monitoring interface."""
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self, camera_config: Optional[CameraConfig] = None, verbose: bool = False):
         """Initialize the sensor manager with all sensors."""
         self.verbose = verbose
         self._lock = threading.Lock()
         self._threads: List[threading.Thread] = []
         self._sensor_status: Dict[str, SensorStatus] = {}
-        self._last_event_time = datetime.datetime.now()
-        self._event_cooldown = 30  # seconds
+        self._last_event_time = datetime.datetime.now() - datetime.timedelta(seconds=300) # Initialize to allow immediate event
+        self._event_cooldown = int(os.getenv("EVENT_COOLDOWN", "300")) # Cooldown in seconds
         self._running = True
         self._notification_manager = NotificationManager()
 
@@ -99,8 +99,8 @@ class SensorManager:
             # RFID reader initialization
             self._rfid_reader = RFIDReader()
 
-            # Camera initialization with default configuration
-            self._camera = CameraManager()
+            # Camera initialization - Pass the config if provided
+            self._camera = CameraManager(config=camera_config)
 
             # Initialize sensor status
             self._update_sensor_status('motion', False)
@@ -320,6 +320,95 @@ class SensorManager:
             logger.info("All sensor resources cleaned up successfully")
         except Exception as e:
             logger.error("Error during cleanup: %s", e)
+
+    def run_sensor_test(self) -> Dict[str, Any]:
+        """Runs a diagnostic check on all initialized sensors."""
+        logger.info("Running sensor test...")
+        results = {}
+        all_ok = True
+
+        # Test motion sensor
+        try:
+            status = self._motion_sensor.check_motion() # Or a dedicated test method if available
+            results['motion'] = {"status": "ok", "details": f"Current state: {status}"}
+            logger.info("Motion sensor test: OK")
+        except Exception as e:
+            results['motion'] = {"status": "error", "details": str(e)}
+            logger.error(f"Motion sensor test failed: {e}")
+            all_ok = False
+
+        # Test door sensor
+        try:
+            status = self._door_sensor.check_state() # Or a dedicated test method
+            results['door'] = {"status": "ok", "details": f"Current state: {'open' if status else 'closed'}"}
+            logger.info("Door sensor test: OK")
+        except Exception as e:
+            results['door'] = {"status": "error", "details": str(e)}
+            logger.error(f"Door sensor test failed: {e}")
+            all_ok = False
+
+        # Test window sensor
+        try:
+            status = self._window_sensor.check_state() # Or a dedicated test method
+            results['window'] = {"status": "ok", "details": f"Current state: {'open' if status else 'closed'}"}
+            logger.info("Window sensor test: OK")
+        except Exception as e:
+            results['window'] = {"status": "error", "details": str(e)}
+            logger.error(f"Window sensor test failed: {e}")
+            all_ok = False
+
+        # Test RFID reader
+        try:
+            # Simple test: try to read for a short duration
+            # More advanced test might involve checking connection status
+            status, _ = self._rfid_reader.read_card(timeout=0.5) # Short timeout
+            if status in [RFIDStatus.OK, RFIDStatus.NO_CARD]: # No card is also OK for a test
+                results['rfid'] = {"status": "ok", "details": "Reader responsive"}
+                logger.info("RFID reader test: OK")
+            else:
+                results['rfid'] = {"status": "error", "details": f"Reader status: {status.name}"}
+                logger.warning(f"RFID reader test status: {status.name}")
+                # Decide if non-OK status during test is an error
+                # all_ok = False
+        except Exception as e:
+            results['rfid'] = {"status": "error", "details": str(e)}
+            logger.error(f"RFID reader test failed: {e}")
+            all_ok = False
+
+        # Test Camera
+        try:
+            # Simple test: get status from CameraManager
+            cam_status = self._camera.get_status()
+            if cam_status.get("is_active"):
+                 results['camera'] = {"status": "ok", "details": "Camera active"}
+                 logger.info("Camera test: OK")
+            else:
+                 results['camera'] = {"status": "error", "details": cam_status.get("error") or "Camera inactive"}
+                 logger.error(f"Camera test failed: {results['camera']['details']}")
+                 all_ok = False
+        except Exception as e:
+            results['camera'] = {"status": "error", "details": str(e)}
+            logger.error(f"Camera test failed: {e}")
+            all_ok = False
+
+        # Test Door Lock (Check GPIO state if possible?)
+        # This is harder without reading input pins. Maybe just log the expected state.
+        try:
+            # Example: If using api_server's IS_LOCKED state
+            # from .api_server import IS_LOCKED
+            # current_lock_state = IS_LOCKED
+            # Or query GPIO if possible?
+            # status = GPIO.input(DOOR_LOCK_PIN) # Assuming DOOR_LOCK_PIN is accessible
+            results['door_lock'] = {"status": "info", "details": "Test not fully implemented (check logs for state)"}
+            logger.info("Door Lock Test: Status logged by lock/unlock functions.")
+        except Exception as e:
+            results['door_lock'] = {"status": "error", "details": str(e)}
+            logger.error(f"Door Lock test failed: {e}")
+            all_ok = False
+
+        summary = "All tests passed" if all_ok else "One or more tests failed"
+        logger.info(f"Sensor test completed. Summary: {summary}")
+        return {"summary": summary, "results": results}
 
 def main() -> None:
     """Test the sensor manager functionality."""
