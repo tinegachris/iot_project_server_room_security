@@ -43,7 +43,7 @@ class User(UserBase):
     last_activity: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class SensorType(str, Enum):
     MOTION = "motion"
@@ -65,7 +65,7 @@ class SensorStatus(BaseModel):
     event_count: Optional[int] = 0
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CameraStatus(BaseModel):
     is_active: bool
@@ -94,7 +94,7 @@ class SensorData(BaseModel):
     event_count: Optional[int] = 0
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Alert(BaseModel):
     id: Optional[int] = None
@@ -112,7 +112,7 @@ class Alert(BaseModel):
     acknowledged_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AlertResponse(Alert):
     id: int
@@ -124,7 +124,7 @@ class AlertResponse(Alert):
     acknowledged_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ControlCommand(BaseModel):
     action: str
@@ -141,7 +141,7 @@ class LogEntry(BaseModel):
     source: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class SystemHealth(BaseModel):
     status: str
@@ -164,7 +164,7 @@ class AccessLog(BaseModel):
     role: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class SensorEvent(BaseModel):
     id: int
@@ -178,7 +178,7 @@ class SensorEvent(BaseModel):
     processed_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class VideoRecord(BaseModel):
     id: int
@@ -193,7 +193,7 @@ class VideoRecord(BaseModel):
     retention_days: int = 7
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class MaintenanceLog(BaseModel):
     id: int
@@ -206,7 +206,7 @@ class MaintenanceLog(BaseModel):
     notes: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class RaspberryPiStatus(BaseModel):
     hostname: str
