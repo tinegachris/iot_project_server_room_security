@@ -15,6 +15,7 @@ from .models import (
 from ..config.config import config
 from .schemas import Severity, AlertSeverity
 from .raspberry_pi_client import RaspberryPiClient
+from .schemas import RaspberryPiEvent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -211,4 +212,67 @@ async def cleanup_old_records(db: Session) -> None:
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
         db.rollback()
+        raise
+
+# ✅ New controller function to handle events from Raspberry Pi
+async def process_pi_event(
+    db: Session,
+    event: RaspberryPiEvent # Use the new schema - remove quotes now that it's imported
+) -> LogEntry:
+    """Process an event received from the Raspberry Pi and create a log entry."""
+    logger.info(f"Processing event from Raspberry Pi: {event.event_type}")
+    try:
+        # Determine image/video URL from incoming media_url
+        incoming_media_url = event.media_url
+        image_url = incoming_media_url if incoming_media_url and incoming_media_url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')) else None
+        video_url = incoming_media_url if incoming_media_url and incoming_media_url.lower().endswith(('.mp4', '.avi', '.mov', '.h264')) else None
+
+        # Create log entry using data from the Pi event
+        log_entry = LogEntry(
+            event_type=event.event_type,
+            timestamp=event.timestamp,
+            details={
+                "message": event.message,
+                "sensor_data": event.sensor_data,
+                "media_url": incoming_media_url # Store the original URL here for reference
+            },
+            image_url=image_url, # Store determined image URL
+            video_url=video_url, # Store determined video URL
+            severity=event.severity,
+            source=event.source,
+            user_id=None # Events from Pi are typically system events, no specific user
+        )
+        db.add(log_entry)
+        db.commit()
+        db.refresh(log_entry)
+        logger.info(f"Successfully logged event from Pi: ID {log_entry.id}, Type: {log_entry.event_type}")
+
+        # Optionally trigger alerts based on severity (similar to process_alert_and_event)
+        if event.severity in [Severity.WARNING, Severity.ERROR, Severity.CRITICAL]:
+            logger.warning(f"High severity event received from Pi: {event.event_type}, Severity: {event.severity}")
+            # You might want to send notifications here or create a server-side Alert record
+            # Example: Create an Alert record
+            alert = Alert(
+                message=event.message or f"Event: {event.event_type}",
+                image_url=log_entry.image_url, # Use image_url from log_entry
+                video_url=log_entry.video_url, # Use video_url from log_entry
+                severity=(
+                    AlertSeverity.CRITICAL if event.severity == Severity.CRITICAL
+                    else AlertSeverity.ERROR if event.severity == Severity.ERROR
+                    else AlertSeverity.WARNING if event.severity == Severity.WARNING
+                    else AlertSeverity.MEDIUM # Default for other non-critical severities like 'info' or 'medium' if mapped
+                ),
+                sensor_data=event.sensor_data,
+                channels=["email", "sms"] if event.severity == Severity.CRITICAL else ["email"],
+                status="pending" # Alert needs to be processed/sent
+            )
+            db.add(alert)
+            db.commit()
+            logger.info(f"Created server-side Alert record for high severity Pi event.")
+
+        return log_entry
+    except Exception as e:
+        logger.error(f"Error processing event from Pi ({event.event_type}): {e}")
+        db.rollback() # Rollback DB changes on error
+        # Decide if you want to raise the exception or handle it (e.g., return None or an error indicator)
         raise

@@ -21,7 +21,9 @@ class User(Base):
     last_activity = Column(DateTime)
 
     logs = relationship("LogEntry", back_populates="user")
-    alerts = relationship("Alert", back_populates="user")
+    created_alerts = relationship("Alert", foreign_keys="Alert.created_by", back_populates="creator")
+    acknowledged_alerts = relationship("Alert", foreign_keys="Alert.acknowledged_by", back_populates="acknowledger")
+    maintenance_logs_performed = relationship("MaintenanceLog", foreign_keys="MaintenanceLog.performed_by", back_populates="performer")
 
 class LogEntry(Base):
     __tablename__ = "log_entries"
@@ -43,8 +45,9 @@ class Alert(Base):
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text)
     video_url = Column(String(255))
+    image_url = Column(String(255))
     event_timestamp = Column(DateTime, default=datetime.utcnow)
-    channels = Column(String(100))  # Stored as comma-separated values
+    channels = Column(JSON)  # Changed from String to JSON to store the list directly
     created_by = Column(Integer, ForeignKey("users.id"))
     status = Column(String(20), default="pending")  # pending, sent, failed
     sent_at = Column(DateTime)
@@ -54,7 +57,8 @@ class Alert(Base):
     acknowledged_by = Column(Integer, ForeignKey("users.id"))
     acknowledged_at = Column(DateTime)
 
-    user = relationship("User", back_populates="alerts")
+    creator = relationship("User", foreign_keys=[created_by], back_populates="created_alerts")
+    acknowledger = relationship("User", foreign_keys=[acknowledged_by], back_populates="acknowledged_alerts")
 
 class AccessLog(Base):
     __tablename__ = "access_logs"
@@ -119,3 +123,5 @@ class MaintenanceLog(Base):
     status = Column(String(20))  # completed, scheduled, in_progress
     next_maintenance = Column(DateTime)
     notes = Column(Text)
+
+    performer = relationship("User", foreign_keys=[performed_by], back_populates="maintenance_logs_performed")

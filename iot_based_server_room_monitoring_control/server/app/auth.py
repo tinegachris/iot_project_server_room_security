@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import os
@@ -29,6 +29,34 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Load expected API Key for Pi communication
+EXPECTED_PI_API_KEY = os.getenv("RASPBERRY_PI_API_KEY")
+
+# API Key dependency function
+def get_api_key(
+    x_api_key: Optional[str] = Header(None, description="API Key for Raspberry Pi communication")
+) -> str:
+    """Dependency function to validate the X-API-Key header."""
+    if not EXPECTED_PI_API_KEY:
+        logger.critical("RASPBERRY_PI_API_KEY is not set in the server environment!")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="API Key validation mechanism not configured on server."
+        )
+    if not x_api_key:
+        logger.warning("Missing X-API-Key header in request.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing API Key header (X-API-Key)",
+        )
+    if x_api_key != EXPECTED_PI_API_KEY:
+        logger.warning("Invalid API Key received in X-API-Key header.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API Key",
+        )
+    return x_api_key # Return the key if valid (could also return True)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""

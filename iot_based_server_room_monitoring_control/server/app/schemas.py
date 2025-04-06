@@ -130,6 +130,16 @@ class ControlCommand(BaseModel):
     action: str
     parameters: Optional[Dict[str, Any]] = None
 
+# ✅ Define schema for incoming events from Raspberry Pi
+class RaspberryPiEvent(BaseModel):
+    event_type: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    message: Optional[str] = None
+    sensor_data: Optional[Dict[str, Any]] = None
+    media_url: Optional[str] = None # Could be image or video URL
+    severity: Severity = Severity.INFO # Use the existing Severity enum
+    source: str = "raspberry_pi" # Identify the source
+
 class LogEntry(BaseModel):
     id: Optional[int] = None
     event_type: str

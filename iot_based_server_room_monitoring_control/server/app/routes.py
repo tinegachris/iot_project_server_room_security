@@ -6,11 +6,17 @@ from typing import Optional, List, Dict, Any
 import logging
 import json
 from .database import get_db
-from .controllers import process_alert_and_event, get_sensor_status, execute_control_command
+from .controllers import (
+    process_alert_and_event, get_sensor_status,
+    execute_control_command, process_pi_event
+)
 from .models import LogEntry as DBLogEntry
-from .schemas import LogEntry, Alert, ControlCommand, SensorStatus, SystemHealth
+from .schemas import (
+    LogEntry, Alert, ControlCommand, SensorStatus, SystemHealth,
+    RaspberryPiEvent
+)
 from .rate_limit import rate_limit
-from .auth import get_current_user
+from .auth import get_current_user, get_api_key
 from ..config.config import config
 from .raspberry_pi_client import RaspberryPiClient
 
@@ -209,6 +215,29 @@ async def post_control(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute control command"
+        )
+
+@router.post("/events", status_code=status.HTTP_201_CREATED)
+async def receive_pi_event(
+    request: Request,
+    event: RaspberryPiEvent,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    api_key: str = Depends(get_api_key)
+):
+    """
+    POST /events endpoint for Raspberry Pi to send event data.
+    Requires API Key authentication.
+    """
+    try:
+        background_tasks.add_task(process_pi_event, db, event)
+        logger.info(f"Received event from Pi ({event.source}): {event.event_type}. Processing in background.")
+        return {"message": "Event received successfully and queued for processing"}
+    except Exception as e:
+        logger.error(f"Error receiving event from Pi: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to receive event"
         )
 
 async def get_system_health():

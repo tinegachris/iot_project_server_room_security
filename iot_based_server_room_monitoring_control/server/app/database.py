@@ -7,6 +7,8 @@ import os
 from dotenv import load_dotenv
 import logging
 
+from .models import Base  
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,9 +35,6 @@ engine = create_engine(
 
 # Create SessionLocal class
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create Base class
-Base = declarative_base()
 
 def get_db():
     """Dependency to get DB session with proper error handling"""
