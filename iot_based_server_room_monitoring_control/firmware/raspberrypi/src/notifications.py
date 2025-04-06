@@ -21,6 +21,8 @@ from twilio.rest import Client
 import smtplib
 from email.message import EmailMessage
 import requests
+import json
+import copy # ✅ Import copy for deep copies
 
 # Configure logging
 logging.basicConfig(
@@ -40,7 +42,7 @@ class AlertData:
     timestamp: datetime
     media_url: Optional[str] = None
     sensor_data: Optional[Dict[str, Any]] = None
-    severity: str = "high"
+    severity: str = "error"
 
 class NotificationManager:
     """Manages notification channels and alert handling."""
@@ -50,6 +52,7 @@ class NotificationManager:
         self._setup_twilio()
         self._setup_email()
         self._setup_fcm()
+        self._setup_server_api()
         logger.info("Notification manager initialized")
 
     def _validate_twilio_credentials(self, sid: str, token: str) -> bool:
@@ -190,6 +193,29 @@ class NotificationManager:
             if not self.fcm_token: missing.append("FCM_DEVICE_TOKEN")
             logger.warning("FCM notifications not configured. Missing or invalid environment variables: %s", ", ".join(missing))
 
+    def _setup_server_api(self) -> None:
+        """Setup main server API configuration."""
+        self.server_api_url = os.getenv("SERVER_API_URL")
+        self.api_key = os.getenv("RASPBERRY_PI_API_KEY")
+
+        if self.server_api_url and self.api_key:
+            if not self.server_api_url.startswith("http"):
+                logger.warning("Invalid SERVER_API_URL format. Should start with http or https.")
+                self.server_api_configured = False
+            elif not self.api_key or len(self.api_key) < 10:
+                logger.warning("RASPBERRY_PI_API_KEY seems invalid or too short.")
+                self.server_api_configured = False
+            else:
+                self.server_api_configured = True
+                self.server_events_endpoint = self.server_api_url.rstrip('/') + "/events"
+                logger.info("Server API event reporting configured successfully to %s", self.server_events_endpoint)
+        else:
+            self.server_api_configured = False
+            missing = []
+            if not self.server_api_url: missing.append("SERVER_API_URL")
+            if not self.api_key: missing.append("RASPBERRY_PI_API_KEY")
+            logger.warning("Server API event reporting not configured. Missing environment variables: %s", ", ".join(missing))
+
     def _send_sms(self, alert: AlertData) -> Optional[str]:
         """Send SMS alert via Twilio."""
         if not self.twilio_client:
@@ -295,6 +321,89 @@ class NotificationManager:
             logger.error("Unexpected FCM error: %s", str(e))
             return False
 
+    def _send_to_server(self, alert: AlertData) -> bool:
+        """Send event data to the main server's /events endpoint."""
+        if not self.server_api_configured:
+            logger.warning("Event reporting to server skipped - Server API not configured")
+            return False
+
+        try:
+            # Prepare data matching the server's RaspberryPiEvent schema
+            # Ensure severity is a valid enum value expected by the server
+            valid_severities = ["info", "warning", "error", "critical"]
+            payload_severity = alert.severity.lower() if isinstance(alert.severity, str) else "info" # Default to info
+            if payload_severity not in valid_severities:
+                 logger.warning(f"Invalid severity '{alert.severity}' for event '{alert.event_type}'. Defaulting to 'info'.")
+                 payload_severity = "info"
+
+            # Attempt to make sensor_data JSON serializable (basic approach)
+            serializable_sensor_data = None
+            if isinstance(alert.sensor_data, dict):
+                try:
+                    # Create a copy to avoid modifying the original alert object
+                    data_copy = copy.deepcopy(alert.sensor_data)
+                    # Attempt to convert non-serializable items (e.g., datetime) to strings
+                    for key, value in data_copy.items():
+                        if isinstance(value, datetime):
+                            data_copy[key] = value.isoformat()
+                        # Add more conversions if needed (e.g., for custom objects)
+
+                    # Test if it dumps without error before sending
+                    json.dumps(data_copy)
+                    serializable_sensor_data = data_copy
+                except TypeError as json_err:
+                    logger.warning(f"Could not make sensor_data fully JSON serializable for event '{alert.event_type}': {json_err}. Sending without it.")
+                    serializable_sensor_data = {"error": "Data not serializable"}
+                except Exception as deepcopy_err:
+                     logger.warning(f"Could not deepcopy sensor_data for event '{alert.event_type}': {deepcopy_err}. Sending without it.")
+                     serializable_sensor_data = {"error": "Data could not be copied"}
+            elif alert.sensor_data is not None:
+                # Handle cases where sensor_data is not a dict but also not None
+                logger.warning(f"Sensor data for event '{alert.event_type}' is not a dictionary. Type: {type(alert.sensor_data)}. Sending as string.")
+                serializable_sensor_data = {"raw": str(alert.sensor_data)}
+
+            payload = {
+                "event_type": alert.event_type,
+                "timestamp": alert.timestamp.isoformat(),
+                "message": alert.message,
+                "sensor_data": serializable_sensor_data, # Use potentially cleaned data
+                "media_url": alert.media_url,
+                "severity": payload_severity,
+                "source": "raspberry_pi"
+            }
+
+            headers = {
+                'Content-Type': 'application/json',
+                'X-API-Key': self.api_key
+            }
+
+            logger.debug(f"Sending event payload to server: {json.dumps(payload)}") # Log the actual payload
+
+            response = requests.post(
+                self.server_events_endpoint,
+                headers=headers,
+                data=json.dumps(payload), # Serialize final payload to JSON string
+                timeout=10
+            )
+
+            # Check specifically for 422 error
+            if response.status_code == 422:
+                logger.error(f"Failed to send event '{alert.event_type}' to server. Status: 422 Unprocessable Entity. Response: {response.text}")
+                # Log the payload that failed validation for debugging
+                logger.error(f"Failing Payload: {json.dumps(payload)}")
+                return False
+            
+            response.raise_for_status()
+
+            logger.info(f"Event '{alert.event_type}' sent to server successfully. Status: {response.status_code}")
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to send event '{alert.event_type}' to server: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while sending event '{alert.event_type}' to server: {e}", exc_info=True)
+            return False
+
     def _format_message(self, alert: AlertData) -> str:
         """Format alert message with all relevant information."""
         message = [
@@ -314,32 +423,22 @@ class NotificationManager:
 
         return "\n".join(message)
 
-    def send_alert(self, alert: AlertData, channels: Optional[List[str]] = None) -> Dict[str, Any]:
-        """
-        Send alert through specified channels.
+    def send_alert(self, alert: AlertData, channels: Optional[List[str]] = None) -> None:
+        """Send alert via specified or all configured channels."""
+        logger.info("Sending alert for event: %s", alert.event_type)
 
-        Args:
-            alert: AlertData object containing alert information
-            channels: List of channels to use ('sms', 'email', 'fcm'). If None, uses all configured channels.
+        server_success = self._send_to_server(alert)
+        if not server_success:
+            logger.warning(f"Failed to log event {alert.event_type} to the main server.")
 
-        Returns:
-            Dict containing results for each channel
-        """
-        if channels is None:
-            channels = ['sms', 'email', 'fcm']
+        target_channels = channels or ['sms', 'email', 'fcm']
 
-        results = {}
-
-        if 'sms' in channels:
-            results['sms'] = self._send_sms(alert)
-
-        if 'email' in channels:
-            results['email'] = "sent" if self._send_email(alert) else "failed"
-
-        if 'fcm' in channels:
-            results['fcm'] = "sent" if self._send_fcm(alert) else "failed"
-
-        return results
+        if "sms" in target_channels:
+            self._send_sms(alert)
+        if "email" in target_channels:
+            self._send_email(alert)
+        if "fcm" in target_channels:
+            self._send_fcm(alert)
 
 def create_intrusion_alert(
     event_type: str,
@@ -354,7 +453,7 @@ def create_intrusion_alert(
         timestamp=datetime.now(),
         media_url=media_url,
         sensor_data=sensor_data,
-        severity="high"
+        severity="critical"
     )
 
 def create_rfid_alert(
@@ -375,7 +474,7 @@ def create_rfid_alert(
         timestamp=datetime.now(),
         media_url=media_url,
         sensor_data=sensor_data,
-        severity="high" if event_type == "unauthorized_access" else "medium"
+        severity="critical" if event_type == "unauthorized_access" else "medium"
     )
 
 def main() -> None:
@@ -389,8 +488,7 @@ def main() -> None:
         media_url="http://example.com/video.h264",
         sensor_data={"location": "main_entrance", "duration": "5s"}
     )
-    results = notification_manager.send_alert(intrusion_alert)
-    logger.info("Intrusion alert results: %s", results)
+    notification_manager.send_alert(intrusion_alert)
 
     # Test RFID alert
     rfid_alert = create_rfid_alert(
@@ -399,8 +497,7 @@ def main() -> None:
         uid="123-456-789",
         media_url="http://example.com/image.jpg"
     )
-    results = notification_manager.send_alert(rfid_alert)
-    logger.info("RFID alert results: %s", results)
+    notification_manager.send_alert(rfid_alert)
 
 if __name__ == "__main__":
     main()
