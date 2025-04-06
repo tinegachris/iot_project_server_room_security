@@ -96,7 +96,7 @@ dependencies = [
     "prometheus-client==0.21.1",
     "structlog==24.1.0",
     "pytest==8.0.2",
-    "pytest-asyncio==0.25.3",
+    "pytest-asyncio==0.26.0",
     "python-dateutil==2.9.0.post0",
     "pytz==2025.1",
     "mypy==1.8.0",
