@@ -1,0 +1,3 @@
+[submodule "iot_based_server_room_monitoring_control/server_room_app"]
+	path = iot_based_server_room_monitoring_control/server_room_app
+	url = https://github.com/Young-r-e-n/secure_iot.git
