@@ -24,9 +24,9 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional, ClassVar, Tuple
 from dotenv import load_dotenv
 
-from sensors import SensorManager
-from camera import CameraManager, CameraConfig
-from notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
+from .sensors import SensorManager
+from .camera import CameraManager, CameraConfig
+from .notifications import NotificationManager, create_intrusion_alert, create_rfid_alert
 
 # Load environment variables
 load_dotenv()
@@ -36,7 +36,7 @@ logging.basicConfig(
     level=os.getenv('LOG_LEVEL', 'INFO'),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('server_room_monitor.log'),
+        logging.FileHandler('/home/admin/iot_project_server_room_security/logs/raspberrypi.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -58,14 +58,12 @@ class SystemConfig:
         resolution_str = os.getenv('CAMERA_RESOLUTION', '1920x1080').split('x')
         resolution: Tuple[int, int] = (int(resolution_str[0]), int(resolution_str[1]))
 
+        # Get the project base directory
+        PROJECT_DIR = os.getenv('PROJECT_DIR', '/home/admin/iot_project_server_room_security')
 
-
-        # Get the user's home directory for storing files
-        USER_HOME = os.path.expanduser('~')
-        DEFAULT_OUTPUT_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'videos')
-        DEFAULT_IMAGE_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'images')
-
-
+        # Update the output and image directories to use the project base directory
+        DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_DIR, 'videos')
+        DEFAULT_IMAGE_DIR = os.path.join(PROJECT_DIR, 'images')
 
         camera_config = CameraConfig(
             resolution=resolution,
