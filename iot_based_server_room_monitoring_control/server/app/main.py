@@ -5,10 +5,11 @@ from fastapi.exceptions import RequestValidationError
 import logging
 import sys
 from typing import Dict, Any
+from contextlib import asynccontextmanager
 
-from iot_based_server_room_monitoring_control.server.app.database import init_db, check_db_connection
-from iot_based_server_room_monitoring_control.server.app.routes import router
-from iot_based_server_room_monitoring_control.server.app.rate_limit import rate_limiter
+from .database import init_db, check_db_connection
+from .routes import router
+from .rate_limit import rate_limiter
 
 # Configure logging
 logging.basicConfig(
@@ -16,16 +17,43 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('server.log')
+        logging.FileHandler('/home/admin/iot_project_server_room_security/logs/server.log')
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Code to run on startup
+    logger.info("Starting up...")
+    try:
+        # Initialize database
+        init_db()
+        logger.info("Database initialized successfully")
+
+        # Check database connection
+        if not check_db_connection():
+            logger.error("Failed to connect to database")
+            # Optionally raise an error or handle differently if DB is critical
+            # raise Exception("Database connection failed during startup")
+        else:
+            logger.info("Database connection successful")
+
+    except Exception as e:
+        logger.error(f"Startup error: {str(e)}")
+        # Depending on the severity, you might want to prevent the app from starting
+        # raise
+
+    yield
+    # Code to run on shutdown (if any)
+    logger.info("Shutting down...")
+
+# Create FastAPI app with lifespan handler
 app = FastAPI(
     title="Server Room Monitoring System",
     description="API for monitoring and controlling server room security",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Configure CORS
@@ -42,23 +70,6 @@ app.middleware("http")(rate_limiter.rate_limit_middleware)
 
 # Include routers
 app.include_router(router, prefix="/api/v1")
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup"""
-    try:
-        # Initialize database
-        init_db()
-        logger.info("Database initialized successfully")
-
-        # Check database connection
-        if not check_db_connection():
-            logger.error("Failed to connect to database")
-            raise Exception("Database connection failed")
-
-    except Exception as e:
-        logger.error(f"Startup error: {str(e)}")
-        raise
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
