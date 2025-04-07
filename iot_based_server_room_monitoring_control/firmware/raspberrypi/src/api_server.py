@@ -2,19 +2,21 @@ import os
 import logging
 from functools import wraps
 from flask import Flask, request, jsonify
-from werkzeug.exceptions import HTTPException, Unauthorized, Forbidden, BadRequest, InternalServerError
+from werkzeug.exceptions import HTTPException, Unauthorized, Forbidden, BadRequest, InternalServerError, NotFound
 from dotenv import load_dotenv
 import RPi.GPIO as GPIO # ✅ Import GPIO library
 import atexit # ✅ To ensure GPIO cleanup
 import subprocess # ✅ Import subprocess for restart
+import shutil # For storage check
+import psutil # For network check
+from datetime import datetime # Added datetime
 
 # Import necessary components from other firmware modules
 # (Assuming SensorManager and CameraManager will be passed in)
-# from .sensors import SensorManager
-# from .camera import CameraManager
+# Removed redundant manager imports
 
 # Load environment variables (especially RASPBERRY_PI_API_KEY)
-load_dotenv()
+# Removed redundant load_dotenv() call
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -109,6 +111,39 @@ def unlock_door():
         logger.error(f"Failed to unlock door (GPIO {DOOR_LOCK_PIN}): {e}")
         return {"status": "error", "message": str(e)}
 
+# --- Helper Functions ---
+def get_storage_status():
+    total, used, free = shutil.disk_usage("/")
+    return {
+        "total_gb": round(total / (2**30), 2),
+        "used_gb": round(used / (2**30), 2),
+        "free_gb": round(free / (2**30), 2),
+        "used_percent": round((used / total) * 100, 2)
+    }
+
+def get_network_status():
+    interfaces = psutil.net_if_addrs()
+    stats = psutil.net_if_stats()
+    status = {}
+    for name, addrs in interfaces.items():
+        interface_stats = stats.get(name)
+        status[name] = {
+            "addresses": [addr.address for addr in addrs if addr.family == psutil.AF_LINK or addr.family == psutil.AF_INET],
+            "is_up": interface_stats.isup if interface_stats else False,
+            "speed_mbps": interface_stats.speed if interface_stats else 0,
+        }
+    return status
+
+def get_pi_health():
+     # Basic health - extend as needed
+     cpu_usage = psutil.cpu_percent(interval=1)
+     memory = psutil.virtual_memory()
+     return {
+        "cpu_usage_percent": cpu_usage,
+        "memory_usage_percent": memory.percent,
+        "status": "healthy" if cpu_usage < 90 and memory.percent < 90 else "warning"
+     }
+
 # --- Flask App Creation ---
 def create_pi_api_server(sm, cm):
     """Creates the Flask app instance, injecting dependencies."""
@@ -142,6 +177,139 @@ def create_pi_api_server(sm, cm):
         except Exception as e:
             logger.error(f"Error getting Pi status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get status: {e}")
+
+    @app.route("/api/sensors/<string:sensor_type>", methods=['GET'])
+    @require_api_key
+    def get_sensor_data(sensor_type):
+        """Return data for a specific sensor type."""
+        if not sensor_manager:
+            raise InternalServerError("SensorManager not initialized")
+        try:
+            status_data = sensor_manager.get_sensor_status()
+            if sensor_type in status_data:
+                return jsonify(status_data[sensor_type])
+            else:
+                # Check common variations like 'door_lock' if applicable
+                if sensor_type == 'door' and 'door_lock' in status_data:
+                     return jsonify(status_data['door_lock']) # Example alias
+                raise NotFound(f"Sensor type '{sensor_type}' not found or status unavailable.")
+        except Exception as e:
+            logger.error(f"Error getting sensor data for {sensor_type}: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get sensor data: {e}")
+
+    @app.route("/api/camera/status", methods=['GET'])
+    @require_api_key
+    def get_camera_pi_status():
+        """Return camera status."""
+        if not camera_manager:
+            raise InternalServerError("CameraManager not initialized")
+        try:
+            status = camera_manager.get_status() # Assuming this method exists
+            return jsonify(status)
+        except Exception as e:
+            logger.error(f"Error getting camera status: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get camera status: {e}")
+
+    @app.route("/api/rfid/status", methods=['GET'])
+    @require_api_key
+    def get_rfid_pi_status():
+        """Return RFID reader status."""
+        if not sensor_manager:
+            raise InternalServerError("SensorManager not initialized")
+        try:
+            # Assuming RFID status is part of the main sensor status
+            status_data = sensor_manager.get_sensor_status()
+            if 'rfid' in status_data:
+                 return jsonify(status_data['rfid'])
+            else:
+                 raise NotFound("RFID status not found in SensorManager.")
+        except Exception as e:
+            logger.error(f"Error getting RFID status: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get RFID status: {e}")
+
+    @app.route("/api/health", methods=['GET'])
+    @require_api_key
+    def get_health_status():
+        """Return system health metrics."""
+        try:
+            health = get_pi_health()
+            return jsonify(health)
+        except Exception as e:
+            logger.error(f"Error getting health status: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get health status: {e}")
+
+    @app.route("/api/storage", methods=['GET'])
+    @require_api_key
+    def get_storage_pi_status():
+        """Return storage status."""
+        try:
+            storage = get_storage_status()
+            return jsonify(storage)
+        except Exception as e:
+            logger.error(f"Error getting storage status: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get storage status: {e}")
+
+    @app.route("/api/network", methods=['GET'])
+    @require_api_key
+    def get_network_pi_status():
+        """Return network status."""
+        try:
+            network = get_network_status()
+            return jsonify(network)
+        except Exception as e:
+            logger.error(f"Error getting network status: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get network status: {e}")
+
+    @app.route("/api/config", methods=['POST'])
+    @require_api_key
+    def update_pi_config():
+        """Update Pi configuration (placeholder)."""
+        # NOTE: Implementing dynamic config updates safely is complex.
+        # This is a placeholder. Requires careful implementation to parse,
+        # validate, apply config, and potentially restart services.
+        if not request.is_json:
+            raise BadRequest("Request must be JSON")
+        new_config = request.get_json()
+        logger.warning(f"Received config update request (NOT IMPLEMENTED): {new_config}")
+        # Example: update specific env var or config file, then maybe restart
+        return jsonify({"status": "warning", "message": "Configuration update not fully implemented"})
+
+    @app.route("/api/logs", methods=['GET'])
+    @require_api_key
+    def get_pi_logs():
+        """Retrieve Pi system logs (e.g., last N lines of firmware log)."""
+        limit = request.args.get('limit', default=100, type=int)
+        log_file_path = '/home/admin/iot_project_server_room_security/logs/raspberrypi.log' # Hardcoded for now
+        try:
+            if not os.path.exists(log_file_path):
+                 raise NotFound(f"Log file not found: {log_file_path}")
+            # Use tail command for efficiency
+            process = subprocess.run(['tail', f'-n{limit}', log_file_path], capture_output=True, text=True, check=True)
+            logs = process.stdout.strip().split('\\n')
+            return jsonify({"logs": logs})
+        except FileNotFoundError:
+             raise NotFound(f"Log file not found: {log_file_path}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error reading log file with tail: {e}")
+            raise InternalServerError(f"Failed to read logs: {e}")
+        except Exception as e:
+            logger.error(f"Error getting logs: {e}", exc_info=True)
+            raise InternalServerError(f"Failed to get logs: {e}")
+
+    @app.route("/api/firmware/version", methods=['GET'])
+    @require_api_key
+    def get_firmware_version():
+        """Return firmware version (placeholder)."""
+        # Version could be stored in a file or env var
+        version = os.getenv("FIRMWARE_VERSION", "1.0.0-dev") # Example placeholder
+        return jsonify({"version": version})
+
+    # Add other firmware check/update endpoints if needed (placeholders)
+    @app.route("/api/firmware/check-updates", methods=['GET'])
+    @require_api_key
+    def check_firmware_updates():
+        logger.info("Firmware update check requested (NOT IMPLEMENTED)")
+        return jsonify({"status": "no-updates", "message": "Update check not implemented"})
 
     @app.route("/api/control", methods=['POST'])
     @require_api_key
@@ -193,6 +361,21 @@ def create_pi_api_server(sm, cm):
                 except Exception as e:
                     logger.error(f"Failed to initiate reboot: {e}")
                     raise InternalServerError(f"Failed to initiate reboot: {e}")
+            elif action == "clear_logs":
+                 log_file_path = '/home/admin/iot_project_server_room_security/logs/raspberrypi.log'
+                 try:
+                     # Clear the log file safely
+                     with open(log_file_path, 'w') as f:
+                         f.truncate(0)
+                     logger.info(f"Log file cleared: {log_file_path}")
+                     result = {"status": "success", "message": "Logs cleared successfully"}
+                 except Exception as e:
+                     logger.error(f"Failed to clear log file {log_file_path}: {e}")
+                     raise InternalServerError(f"Failed to clear logs: {e}")
+            elif action == "update_firmware":
+                 logger.warning("Firmware update via API requested (NOT IMPLEMENTED)")
+                 # Trigger update script here if implemented
+                 result = {"status": "warning", "message": "Firmware update not implemented"}
             else:
                 raise BadRequest(f"Unsupported action: {action}")
 
@@ -247,4 +430,8 @@ if __name__ == '__main__':
 
     test_app = create_pi_api_server(DummyManager(), DummyManager())
     # Run on 0.0.0.0 to be accessible externally, port 5000 as expected by server config
-    test_app.run(host='0.0.0.0', port=5000, debug=True) # Debug=True only for testing 
+    # Use waitress or gunicorn in production instead of Flask dev server
+    from waitress import serve
+    print("Starting Waitress server for testing...")
+    serve(test_app, host='0.0.0.0', port=5000)
+    # test_app.run(host='0.0.0.0', port=5000, debug=True) # Debug=True only for testing 

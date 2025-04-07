@@ -33,7 +33,12 @@ class RaspberryPiClient:
         headers = {}
         if self.api_key:
             headers['X-API-Key'] = self.api_key
+            logger.debug("RaspberryPiClient using API Key for session.")
+        else:
+             logger.debug("RaspberryPiClient session without API Key.")
+
         self.session = aiohttp.ClientSession(
+            base_url=self.base_url,
             timeout=self.timeout,
             headers=headers
         )
@@ -51,16 +56,33 @@ class RaspberryPiClient:
 
         for attempt in range(self.retry_count):
             try:
-                async with getattr(self.session, method)(f"{self.base_url}{endpoint}", **kwargs) as response:
+                url = f"{self.base_url}{endpoint}"
+                logger.debug(f"Making request: {method.upper()} {url}")
+                async with getattr(self.session, method)(endpoint, **kwargs) as response:
+                    logger.debug(f"Response status for {method.upper()} {endpoint}: {response.status}")
                     response.raise_for_status()
+                    content_type = response.headers.get('Content-Type', '')
+                    if response.status == 204 or 'application/json' not in content_type:
+                         logger.debug(f"Received non-JSON or empty response ({response.status}) for {endpoint}")
+                         return {"status": "success", "response_code": response.status}
                     return await response.json()
+            except aiohttp.ClientResponseError as e:
+                 logger.error(f"HTTP error during {method.upper()} {endpoint}: {e.status} - {e.message}")
+                 if attempt == self.retry_count - 1:
+                     raise
+                 await asyncio.sleep(self.retry_delay * (attempt + 1))
             except aiohttp.ClientError as e:
+                logger.error(f"Client error during {method.upper()} {endpoint}: {e}")
                 if attempt == self.retry_count - 1:
-                    logger.error(f"Failed to {method} {endpoint} after {self.retry_count} attempts: {e}")
                     raise
                 await asyncio.sleep(self.retry_delay * (attempt + 1))
+            except asyncio.TimeoutError:
+                 logger.error(f"Request timeout during {method.upper()} {endpoint}")
+                 if attempt == self.retry_count - 1:
+                     raise
+                 await asyncio.sleep(self.retry_delay * (attempt + 1))
 
-        raise RuntimeError(f"Failed to {method} {endpoint} after {self.retry_count} attempts")
+        raise RuntimeError(f"Failed to {method.upper()} {endpoint} after {self.retry_count} attempts")
 
     async def get_status(self) -> Dict[str, Any]:
         """Get Raspberry Pi status."""

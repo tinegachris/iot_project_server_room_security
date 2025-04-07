@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any, Union
 from enum import Enum
 
 class Severity(str, Enum):
+    DEBUG = "debug"
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -67,15 +68,10 @@ class SensorStatus(BaseModel):
     class Config:
         from_attributes = True
 
+# NOTE: The following schemas (CameraStatus, RFIDStatus, SensorData) appear unused
+# based on current routes and controllers. Consider removing if confirmed.
 class CameraStatus(BaseModel):
     is_active: bool
-    resolution: str
-    framerate: int
-    rotation: int
-    brightness: int
-    last_capture: Optional[datetime] = None
-    last_video: Optional[datetime] = None
-    error: Optional[str] = None
 
 class RFIDStatus(BaseModel):
     is_active: bool
@@ -130,18 +126,24 @@ class ControlCommand(BaseModel):
     action: str
     parameters: Optional[Dict[str, Any]] = None
 
-# ✅ Define schema for incoming events from Raspberry Pi
+# Schema for events coming from Raspberry Pi
 class RaspberryPiEvent(BaseModel):
     event_type: str
-    timestamp: datetime = Field(default_factory=datetime.now)
-    message: Optional[str] = None
+    message: str
+    timestamp: datetime # Ensure datetime is parsed correctly
+    media_url: Optional[str] = None
     sensor_data: Optional[Dict[str, Any]] = None
-    media_url: Optional[str] = None # Could be image or video URL
-    severity: Severity = Severity.INFO # Use the existing Severity enum
-    source: str = "raspberry_pi" # Identify the source
+    severity: Severity = Severity.INFO # Default severity
+    source: str = "raspberry_pi" # Source identifier
 
-class LogEntry(BaseModel):
-    id: Optional[int] = None
+    class Config:
+        from_attributes = True # Allow mapping from ORM models if needed
+        # Add custom JSON encoders if necessary, e.g., for datetime
+        # json_encoders = {
+        #     datetime: lambda v: v.isoformat(),
+        # }
+
+class LogEntryBase(BaseModel):
     event_type: str
     timestamp: datetime
     details: Dict[str, Any]
@@ -149,6 +151,13 @@ class LogEntry(BaseModel):
     video_url: Optional[str] = None
     severity: Severity = Severity.INFO
     source: str
+
+    class Config:
+        from_attributes = True
+
+class LogEntry(LogEntryBase):
+    id: Optional[int] = None
+    role: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -217,32 +226,3 @@ class MaintenanceLog(BaseModel):
 
     class Config:
         from_attributes = True
-
-class RaspberryPiStatus(BaseModel):
-    hostname: str
-    ip_address: str
-    uptime: str
-    cpu_usage: float
-    memory_usage: float
-    disk_usage: float
-    temperature: float
-    last_reboot: datetime
-    firmware_version: str
-    is_online: bool = True
-    last_heartbeat: datetime
-
-class CameraCommand(BaseModel):
-    action: str
-    duration: Optional[int] = 30
-    resolution: Optional[str] = None
-    quality: Optional[int] = 85
-
-class RFIDCommand(BaseModel):
-    action: str
-    card_uid: Optional[List[int]] = None
-    role: Optional[str] = None
-
-class SensorCommand(BaseModel):
-    action: str
-    sensor_type: SensorType
-    parameters: Optional[Dict[str, Any]] = None

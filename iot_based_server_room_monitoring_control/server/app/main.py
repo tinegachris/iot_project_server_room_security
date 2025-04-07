@@ -6,6 +6,7 @@ import logging
 import sys
 from typing import Dict, Any
 from contextlib import asynccontextmanager
+import os
 
 from .database import init_db, check_db_connection
 from .routes import router
@@ -17,7 +18,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('/home/admin/iot_project_server_room_security/logs/server.log')
+        # Use environment variable for log file path with a default
+        logging.FileHandler(os.getenv('SERVER_LOG_FILE', '/home/admin/iot_project_server_room_security/logs/server.log'))
     ]
 )
 logger = logging.getLogger(__name__)
