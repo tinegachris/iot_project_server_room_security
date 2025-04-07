@@ -12,11 +12,13 @@ Each sensor has an associated LED indicator for visual feedback.
 import logging
 import argparse
 from dataclasses import dataclass
-from typing import Optional, Type, Callable
+from typing import Optional, Type, Callable, Any
 import os
 import time
 import random
 import platform
+from gpiozero import MotionSensor as PIRMotionSensor, Button as OpenCloseSensor, LED
+from gpiozero import InputDevice
 
 # Configure logging
 logging.basicConfig(
@@ -29,9 +31,6 @@ logger = logging.getLogger(__name__)
 try:
     IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
     if IS_RASPBERRY_PI:
-        from gpiozero import MotionSensor as PIRMotionSensor
-        from gpiozero import Button as OpenCloseSensor
-        from gpiozero import LED
         logger.info("Running on Raspberry Pi with real GPIO hardware")
     else:
         logger.warning("Not running on Raspberry Pi, using mock implementation")
@@ -43,9 +42,9 @@ except ImportError:
 class SensorConfig:
     """Configuration for a sensor."""
     gpio_pin: int
-    led_pin: int
-    name: str
-    verbose: bool
+    led_pin: Optional[int] = None # Optional LED pin
+    name: str = "Sensor"
+    verbose: bool = False
 
 class MockSensor:
     """Mock sensor implementation for non-Raspberry Pi systems."""
@@ -116,134 +115,188 @@ class MockLED:
         """Clean up resources."""
         pass
 
-class SensorHandler:
-    """Base class to handle sensors with LEDs."""
+class BaseSensorHandler:
+    """Base class to handle sensors with optional LEDs."""
 
     def __init__(self, config: SensorConfig):
-        """Initialize the sensor handler with configuration."""
-        if config.verbose:
-            logger.setLevel(logging.DEBUG)
-
-        logger.info("[%s]: Initializing - GPIO_PIN: %d, LED_PIN: %d",
-                   config.name, config.gpio_pin, config.led_pin)
-
         self.config = config
-        self.sensor = self.create_sensor(config.gpio_pin)
-        self.indicator_led = self.create_led(config.led_pin)
-        self.setup_callbacks()
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        if config.verbose:
+            self.logger.setLevel(logging.DEBUG)
+        self.logger.info(f"[{config.name}]: Initializing - GPIO_PIN: {config.gpio_pin}, LED_PIN: {config.led_pin}")
 
-    def create_sensor(self, gpio_pin: int) -> Type:
-        """Create the sensor instance. To be implemented by subclasses."""
-        raise NotImplementedError
+        self.sensor = None # Placeholder for gpiozero sensor object
+        self.led = None    # Placeholder for gpiozero LED object
 
-    def create_led(self, gpio_pin: int) -> Type:
-        """Create the LED instance."""
-        if IS_RASPBERRY_PI:
-            return LED(gpio_pin)
-        return MockLED(gpio_pin)
+        # Initialize LED if configured
+        if config.led_pin is not None:
+            try:
+                self.led = LED(config.led_pin)
+                self.led.off() # Start with LED off
+            except Exception as e:
+                self.logger.error(f"[{config.name}]: Failed to initialize LED on pin {config.led_pin}: {e}")
+                self.led = None # Ensure LED is None if init fails
 
-    def setup_callbacks(self) -> None:
-        """Setup sensor callbacks. To be implemented by subclasses."""
-        raise NotImplementedError
+    def create_sensor(self, gpio_pin: int) -> Any:
+        """Placeholder method to be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement create_sensor")
 
-    def cleanup(self) -> None:
-        """Clean up the resources used by the sensor."""
+    def cleanup(self):
+        """Clean up resources (LED and Sensor)."""
+        self.logger.debug(f"[{self.config.name}]: Starting base cleanup...")
+        # Close Sensor object first
+        if self.sensor:
+            sensor_instance = self.sensor
+            self.sensor = None # Clear reference before closing
+            self.logger.info(f"[{self.config.name}]: Closing sensor object on pin {self.config.gpio_pin}")
+            try:
+                # Detach any remaining internal callbacks if possible (gpiozero handles most)
+                if hasattr(sensor_instance, 'close'):
+                    sensor_instance.close()
+                self.logger.debug(f"[{self.config.name}]: Sensor object closed.")
+            except Exception as e:
+                 self.logger.error(f"[{self.config.name}]: Error closing sensor object: {e}")
+
+        # Close LED object
+        if self.led:
+            led_instance = self.led
+            self.led = None # Clear reference before closing
+            self.logger.info(f"[{self.config.name}]: Cleaning up LED on pin {self.config.led_pin}")
+            try:
+                if hasattr(led_instance, 'close'):
+                    led_instance.close()
+                self.logger.debug(f"[{self.config.name}]: LED closed.")
+            except Exception as e:
+                self.logger.error(f"[{self.config.name}]: Error closing LED: {e}")
+
+        self.logger.info(f"[{self.config.name}]: Base cleanup finished.")
+
+    def _flash_led(self, times=1, duration=0.1):
+        """Flash the associated LED briefly."""
+        if self.led:
+            try:
+                self.led.blink(on_time=duration, off_time=duration, n=times, background=True)
+            except Exception as e:
+                 self.logger.warning(f"[{self.config.name}]: Could not flash LED: {e}")
+
+class MotionSensorHandler(BaseSensorHandler):
+    """Handles PIR motion sensor."""
+    def __init__(self, config: SensorConfig):
+        super().__init__(config)
         try:
-            self.sensor.close()
-            self.indicator_led.close()
-            logger.info("[%s]: Cleanup completed", self.config.name)
+            self.sensor = self.create_sensor(config.gpio_pin)
+            self.sensor.when_motion = self.on_motion_detected
+            self.sensor.when_no_motion = self.on_motion_stopped
+            self.logger.info(f"[{config.name}]: PIR Motion sensor initialized and callbacks attached.")
         except Exception as e:
-            logger.error("[%s]: Error during cleanup: %s", self.config.name, e)
+            self.logger.error(f"[{config.name}]: Failed to initialize PIR sensor on pin {config.gpio_pin}: {e}")
+            self.cleanup() # Attempt cleanup if init fails
+            raise # Re-raise exception
 
-class MotionSensorHandler(SensorHandler):
-    """Class to handle motion detection using a PIR sensor."""
+    def create_sensor(self, gpio_pin: int):
+        # Using PIR Motion Sensor for potentially better handling than basic MotionSensor
+        return PIRMotionSensor(gpio_pin, queue_len=10, sample_rate=5, threshold=0.5)
 
-    def create_sensor(self, gpio_pin: int) -> Type:
-        """Create a PIR motion sensor instance."""
-        if IS_RASPBERRY_PI:
-            return PIRMotionSensor(gpio_pin, queue_len=1, sample_rate=1)
-        return MockSensor(gpio_pin)
+    def on_motion_detected(self):
+        self.logger.info(f"[{self.config.name}]: Motion DETECTED")
+        self._flash_led(times=2)
+        # Callback handled by SensorManager polling check_motion
 
-    def setup_callbacks(self) -> None:
-        """Setup motion detection callbacks."""
-        if IS_RASPBERRY_PI:
-            self.sensor.when_motion = self.on_motion
-            self.sensor.when_no_motion = self.on_no_motion
-        else:
-            self.sensor.when_pressed = self.on_motion
-            self.sensor.when_released = self.on_no_motion
-
-    def on_motion(self) -> None:
-        """Callback for when motion is detected."""
-        logger.info("[%s]: Motion detected!", self.config.name)
-        self.indicator_led.on()
-
-    def on_no_motion(self) -> None:
-        """Callback for when no motion is detected."""
-        logger.info("[%s]: No motion detected!", self.config.name)
-        self.indicator_led.off()
+    def on_motion_stopped(self):
+        self.logger.info(f"[{self.config.name}]: Motion STOPPED")
+        if self.led:
+            self.led.off()
 
     def check_motion(self) -> bool:
-        """Check the status of the motion sensor."""
-        if IS_RASPBERRY_PI:
-            status = self.sensor.motion_detected
-        else:
-            # Simulate random motion detection
-            status = random.random() < 0.1  # 10% chance of motion
-            self.sensor.update_state(status)
-            
-        logger.debug("[%s]: Check motion status - %s",
-                    self.config.name, 'Detected' if status else 'Not detected')
-        return status
+        """Check if motion is currently detected."""
+        if not self.sensor:
+            self.logger.warning(f"[{self.config.name}]: Check motion called but sensor not initialized.")
+            return False
+        return self.sensor.is_active
 
-class OpenCloseSensorHandler(SensorHandler):
-    """Base class for door and window sensors using reed switches."""
+    def cleanup(self):
+        """Clean up motion sensor resources."""
+        self.logger.debug(f"[{self.config.name}]: Starting motion sensor specific cleanup...")
+        # Detach callbacks before closing sensor in base class
+        if self.sensor:
+            self.logger.debug(f"[{self.config.name}]: Detaching callbacks...")
+            try:
+                self.sensor.when_motion = None
+                self.sensor.when_no_motion = None
+            except Exception as e:
+                 self.logger.error(f"[{self.config.name}]: Error detaching callbacks: {e}")
+        super().cleanup() # Call base class cleanup
+        self.logger.info(f"[{self.config.name}]: Motion sensor cleanup finished.")
 
-    def create_sensor(self, gpio_pin: int) -> Type:
-        """Create a reed switch sensor instance."""
-        if IS_RASPBERRY_PI:
-            return OpenCloseSensor(gpio_pin, pull_up=True, bounce_time=0.1)
-        return MockSensor(gpio_pin)
+class OpenCloseSensorHandler(BaseSensorHandler):
+    """Base class for sensors using InputDevice (like reed switches)."""
+    def __init__(self, config: SensorConfig):
+        super().__init__(config)
+        self._is_open = False # Internal state - kept for potential future use but check_state will use is_active directly
+        try:
+            self.sensor = self.create_sensor(config.gpio_pin)
+            # Assuming pull_up=True means pin is LOW when closed (magnet near) and HIGH when open (magnet away)
+            # is_active is True if pin is HIGH (Open)
+            self._is_open = self.sensor.is_active
+            # Remove callback assignments as InputDevice doesn't have when_activated/deactivated
+            # self.sensor.when_activated = self._handle_opened # Pin goes HIGH
+            # self.sensor.when_deactivated = self._handle_closed # Pin goes LOW
+            self.logger.info(f"[{config.name}]: Open/Close sensor initialized. Initial state: {'OPEN' if self._is_open else 'CLOSED'}")
+        except Exception as e:
+            self.logger.error(f"[{config.name}]: Failed to initialize Open/Close sensor on pin {config.gpio_pin}: {e}")
+            self.cleanup()
+            raise
 
-    def setup_callbacks(self) -> None:
-        """Setup open/close detection callbacks."""
-        if IS_RASPBERRY_PI:
-            self.sensor.when_pressed = self.on_open
-            self.sensor.when_released = self.on_close
-        else:
-            self.sensor.when_pressed = self.on_open
-            self.sensor.when_released = self.on_close
+    def create_sensor(self, gpio_pin: int):
+        # Using InputDevice with pull-up
+        # bounce_time helps debounce noisy switches - removed as InputDevice doesn't support it
+        # return InputDevice(gpio_pin, pull_up=True, bounce_time=0.1)
+        return InputDevice(gpio_pin, pull_up=True)
 
-    def on_open(self) -> None:
-        """Callback for when the sensor is triggered (opened)."""
-        logger.info("[%s]: Opened!", self.config.name)
-        self.indicator_led.on()
+    def _handle_opened(self):
+        self._is_open = True
+        self.logger.info(f"[{self.config.name}]: State changed to OPEN")
+        self._flash_led()
+        # Further action handled by SensorManager polling check_state
 
-    def on_close(self) -> None:
-        """Callback for when the sensor is released (closed)."""
-        logger.info("[%s]: Closed!", self.config.name)
-        self.indicator_led.off()
+    def _handle_closed(self):
+        self._is_open = False
+        self.logger.info(f"[{self.config.name}]: State changed to CLOSED")
+        if self.led:
+            self.led.off()
+        # Further action handled by SensorManager polling check_state
 
     def check_state(self) -> bool:
-        """Check the current state of the sensor."""
-        if IS_RASPBERRY_PI:
-            status = self.sensor.is_pressed
-        else:
-            # Simulate random open/close state
-            status = random.random() < 0.05  # 5% chance of being open
-            self.sensor.update_state(status)
-            
-        logger.debug("[%s]: Check state - %s",
-                    self.config.name, 'Opened' if status else 'Closed')
-        return status
+        """Check if the sensor is currently in the open state."""
+        # Returns the internally tracked state based on callbacks - CHANGED
+        # Now directly checks the sensor's active state
+        if not self.sensor:
+            self.logger.warning(f"[{self.config.name}]: Check state called but sensor not initialized.")
+            return False # Or raise error?
+        # self._is_open = self.sensor.is_active # Update internal state if needed elsewhere
+        return self.sensor.is_active # is_active is True if pin is HIGH (Open)
+
+    def cleanup(self):
+        """Clean up open/close sensor resources."""
+        self.logger.debug(f"[{self.config.name}]: Starting open/close sensor specific cleanup...")
+        # Remove callback detachment as they are no longer assigned
+        # if self.sensor:
+        #     self.logger.debug(f"[{self.config.name}]: Detaching callbacks...")
+        #     try:
+        #         self.sensor.when_activated = None
+        #         self.sensor.when_deactivated = None
+        #     except Exception as e:
+        #          self.logger.error(f"[{self.config.name}]: Error detaching callbacks: {e}")
+        super().cleanup() # Call base class cleanup
+        self.logger.info(f"[{self.config.name}]: Open/Close sensor cleanup finished.")
 
 class DoorSensorHandler(OpenCloseSensorHandler):
-    """Class to handle door sensors using reed switches."""
-    pass
+    """Handles door magnetic reed switch sensor."""
+    pass # Inherits functionality from OpenCloseSensorHandler
 
 class WindowSensorHandler(OpenCloseSensorHandler):
-    """Class to handle window sensors using reed switches."""
-    pass
+    """Handles window magnetic reed switch sensor."""
+    pass # Inherits functionality from OpenCloseSensorHandler
 
 def main() -> None:
     """Main function to initialize sensor handlers and start monitoring."""

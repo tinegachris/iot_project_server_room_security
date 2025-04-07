@@ -30,12 +30,12 @@ class SensorStatus:
     name: str
     is_active: bool
     last_check: datetime.datetime
+    type: str # Made non-optional: motion, door, window, rfid, camera, door_lock etc.
+    location: Optional[str] = None # e.g., 'main_door', 'rack_window'
     error: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
-    location: Optional[str] = None
-    type: Optional[str] = None  # motion, door, window, rfid, camera
-    firmware_version: Optional[str] = None
-    last_event: Optional[datetime.datetime] = None
+    firmware_version: Optional[str] = None # Can be added if sensors have firmware
+    last_event_timestamp: Optional[datetime.datetime] = None # Renamed for clarity
     event_count: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -49,7 +49,7 @@ class SensorStatus:
             "location": self.location,
             "type": self.type,
             "firmware_version": self.firmware_version,
-            "last_event": self.last_event.isoformat() if self.last_event else None,
+            "last_event_timestamp": self.last_event_timestamp.isoformat() if self.last_event_timestamp else None,
             "event_count": self.event_count
         }
 
@@ -70,49 +70,105 @@ class SensorManager:
         # Initialize sensors with proper configuration
         try:
             # Motion sensor configuration
+            motion_pin = int(os.getenv("MOTION_SENSOR_PIN", "4"))
             motion_config = SensorConfig(
-                gpio_pin=int(os.getenv("MOTION_SENSOR_PIN", "4")),
+                gpio_pin=motion_pin,
                 led_pin=int(os.getenv("MOTION_LED_PIN", "22")),
                 name="Motion",
                 verbose=verbose
             )
             self._motion_sensor = MotionSensorHandler(motion_config)
+            self._initialize_sensor_status('motion', type='motion', location=f'pin_{motion_pin}')
 
             # Door sensor configuration
+            door_pin = int(os.getenv("DOOR_SENSOR_PIN", "17"))
             door_config = SensorConfig(
-                gpio_pin=int(os.getenv("DOOR_SENSOR_PIN", "17")),
+                gpio_pin=door_pin,
                 led_pin=int(os.getenv("DOOR_LED_PIN", "23")),
                 name="Door",
                 verbose=verbose
             )
             self._door_sensor = DoorSensorHandler(door_config)
+            self._initialize_sensor_status('door', type='door', location=f'pin_{door_pin}')
 
             # Window sensor configuration
+            window_pin = int(os.getenv("WINDOW_SENSOR_PIN", "27"))
             window_config = SensorConfig(
-                gpio_pin=int(os.getenv("WINDOW_SENSOR_PIN", "27")),
+                gpio_pin=window_pin,
                 led_pin=int(os.getenv("WINDOW_LED_PIN", "24")),
                 name="Window",
                 verbose=verbose
             )
             self._window_sensor = WindowSensorHandler(window_config)
+            self._initialize_sensor_status('window', type='window', location=f'pin_{window_pin}')
 
             # RFID reader initialization
             self._rfid_reader = RFIDReader()
+            self._initialize_sensor_status('rfid', type='rfid', location='main_reader')
 
             # Camera initialization - Pass the config if provided
             self._camera = CameraManager(config=camera_config)
+            self._initialize_sensor_status('camera', type='camera', location='main_camera')
 
-            # Initialize sensor status
-            self._update_sensor_status('motion', False)
-            self._update_sensor_status('door', False)
-            self._update_sensor_status('window', False)
-            self._update_sensor_status('rfid', False)
-            self._update_sensor_status('camera', True)
+            # Door lock status (managed by api_server, but status reflected here)
+            door_lock_pin = int(os.getenv("DOOR_LOCK_PIN", "25"))
+            self._initialize_sensor_status('door_lock', type='actuator', location=f'pin_{door_lock_pin}')
 
-            logger.info("Sensor manager initialized successfully")
+            logger.info("Sensor manager initialized successfully with initial statuses")
         except Exception as e:
             logger.error("Failed to initialize sensor manager: %s", e)
             raise
+
+    # Helper to initialize status entries
+    def _initialize_sensor_status(self, sensor_name: str, type: str, location: Optional[str] = None):
+        with self._lock:
+            if sensor_name not in self._sensor_status:
+                 self._sensor_status[sensor_name] = SensorStatus(
+                     name=sensor_name,
+                     type=type,
+                     location=location,
+                     is_active=False, # Will be set to True once checks start
+                     last_check=datetime.datetime.now(),
+                     event_count=0,
+                     last_event_timestamp=None
+                 )
+
+    # Update method to preserve existing static info and update counts/timestamps
+    def _update_sensor_status(self, sensor_name: str, is_active: bool, error: Optional[str] = None, data: Optional[Dict[str, Any]] = None, event_detected: bool = False) -> None:
+        """Update the status of a sensor, incrementing event count if needed."""
+        now = datetime.datetime.now()
+        with self._lock:
+            if sensor_name in self._sensor_status:
+                current_status = self._sensor_status[sensor_name]
+                current_status.is_active = is_active
+                current_status.last_check = now
+                current_status.error = error
+                current_status.data = data
+
+                if event_detected:
+                     current_status.event_count += 1
+                     current_status.last_event_timestamp = now
+            else:
+                # Should not happen if initialized correctly, but handle defensively
+                logger.warning(f"Attempted to update status for uninitialized sensor: {sensor_name}. Creating entry.")
+                # Need type/location info here if creating dynamically
+                fallback_type = 'unknown'
+                fallback_location = None
+                if sensor_name == 'motion': fallback_type = 'motion'
+                elif sensor_name == 'door': fallback_type = 'door'
+                # ... add other fallbacks if necessary ...
+
+                self._sensor_status[sensor_name] = SensorStatus(
+                    name=sensor_name,
+                    is_active=is_active,
+                    last_check=now,
+                    error=error,
+                    data=data,
+                    type=fallback_type,
+                    location=fallback_location,
+                    event_count=1 if event_detected else 0,
+                    last_event_timestamp=now if event_detected else None
+                )
 
     def _handle_motion(self) -> None:
         """Handle motion sensor events."""
@@ -123,6 +179,7 @@ class SensorManager:
 
                 if motion_detected:
                     logger.info("Motion detected in server room")
+                    self._update_sensor_status('motion', True, data={'detected': True}, event_detected=True)
                     self._handle_intrusion_event("motion_detected", "Motion detected in server room")
 
                 time.sleep(1)
@@ -140,6 +197,7 @@ class SensorManager:
 
                 if door_open:
                     logger.info("Door opened in server room")
+                    self._update_sensor_status('door', True, data={'open': True}, event_detected=True)
                     self._handle_intrusion_event("door_opened", "Door opened in server room")
 
                 time.sleep(1)
@@ -157,6 +215,7 @@ class SensorManager:
 
                 if window_open:
                     logger.info("Window opened in server room")
+                    self._update_sensor_status('window', True, data={'open': True}, event_detected=True)
                     self._handle_intrusion_event("window_opened", "Window opened in server room")
 
                 time.sleep(1)
@@ -179,7 +238,7 @@ class SensorManager:
                         'uid': uid_str,
                         'authorized': auth_status == RFIDStatus.OK,
                         'role': role if auth_status == RFIDStatus.OK else 'unauthorized'
-                    })
+                    }, event_detected=True)
 
                     if auth_status == RFIDStatus.OK:
                         logger.info("RFID access granted: %s (%s)", uid_str, role)
@@ -210,8 +269,9 @@ class SensorManager:
                 'last_image': image_path,
                 'last_image_url': image_url,
                 'last_video': video_path,
-                'last_video_url': video_url
-            })
+                'last_video_url': video_url,
+                'trigger_event': event_type
+            }, event_detected=True)
 
             # Create and send alert
             alert = create_intrusion_alert(
@@ -250,8 +310,9 @@ class SensorManager:
                 'last_image_url': image_url,
                 'last_video': video_path,
                 'last_video_url': video_url,
-                'event_type': 'unauthorized_access'
-            })
+                'trigger_event': 'unauthorized_access',
+                'uid': uid
+            }, event_detected=True)
 
             # Create and send alert
             alert = create_rfid_alert(
@@ -268,17 +329,6 @@ class SensorManager:
             self._update_sensor_status('camera', False, str(e))
             logger.error("Failed to handle unauthorized access event: %s", e)
 
-    def _update_sensor_status(self, sensor_name: str, is_active: bool, error: Optional[str] = None, data: Optional[Dict[str, Any]] = None) -> None:
-        """Update the status of a sensor."""
-        with self._lock:
-            self._sensor_status[sensor_name] = SensorStatus(
-                name=sensor_name,
-                is_active=is_active,
-                last_check=datetime.datetime.now(),
-                error=error,
-                data=data
-            )
-
     def get_sensor_status(self) -> Dict[str, Any]:
         """Get the current status of all sensors."""
         with self._lock:
@@ -289,6 +339,10 @@ class SensorManager:
 
     def start(self) -> None:
         """Start all sensor monitoring threads."""
+        if self._threads:
+            logger.warning("Sensor threads already started or not cleaned up properly. Attempting restart.")
+            self.stop()
+
         self._running = True
         self._threads = [
             threading.Thread(target=self._handle_motion, name="MotionThread"),
@@ -298,16 +352,37 @@ class SensorManager:
         ]
 
         for thread in self._threads:
-            thread.daemon = True
+            thread.daemon = False # Set to False for graceful shutdown
             thread.start()
 
         logger.info("All sensor threads started successfully")
 
     def stop(self) -> None:
         """Stop all sensor monitoring threads."""
+        if not self._running:
+            logger.info("Sensor threads already stopping or stopped.")
+            return
+
         self._running = False
         logger.info("Stopping all sensor threads...")
-        time.sleep(2)  # Give threads time to exit gracefully
+
+        # Wait for threads to finish
+        thread_join_timeout = 5.0 # Seconds to wait for each thread
+        threads_to_join = list(self._threads) # Copy list as we might modify it later
+        self._threads = [] # Clear the list of active threads
+
+        for thread in threads_to_join:
+            if thread.is_alive():
+                 logger.debug(f"Waiting for thread {thread.name} to join...")
+                 thread.join(timeout=thread_join_timeout)
+                 if thread.is_alive():
+                     logger.warning(f"Thread {thread.name} did not join within {thread_join_timeout}s.")
+                 else:
+                     logger.debug(f"Thread {thread.name} joined successfully.")
+            else:
+                 logger.debug(f"Thread {thread.name} was already finished.")
+
+        logger.info("Finished attempting to stop sensor threads.")
 
     def cleanup(self) -> None:
         """Clean up all sensor resources."""
@@ -409,6 +484,17 @@ class SensorManager:
         summary = "All tests passed" if all_ok else "One or more tests failed"
         logger.info(f"Sensor test completed. Summary: {summary}")
         return {"summary": summary, "results": results}
+
+    # Add health check method for main loop
+    def is_healthy(self) -> bool:
+        """Check if all sensor threads are running."""
+        if not self._running:
+            return False # Not running means not healthy in this context
+        for thread in self._threads:
+            if not thread.is_alive():
+                logger.error(f"Sensor thread {thread.name} is not alive!")
+                return False
+        return True
 
 def main() -> None:
     """Test the sensor manager functionality."""

@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 import platform
 import random
+import spidev
+# import RPi.GPIO as GPIO # Removed to avoid conflict with gpiozero
 
 # Configure logging
 logging.basicConfig(
@@ -48,8 +50,6 @@ AUTHORIZED_CARDS: Dict[Tuple[int, int, int, int, int], CardInfo] = {
 try:
     IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
     if IS_RASPBERRY_PI:
-        import RPi.GPIO as GPIO
-        import spidev
         logger.info("Running on Raspberry Pi with real RFID hardware")
     else:
         logger.warning("Not running on Raspberry Pi, using mock implementation")
@@ -133,7 +133,7 @@ class MFRC522:
     """MFRC522 RFID reader implementation for Raspberry Pi."""
 
     # Pin configuration
-    NRSTPD = 22
+    # NRSTPD = 22 # Removed as RPi.GPIO is no longer used
     MAX_LEN = 16
 
     # Register definitions
@@ -199,19 +199,26 @@ class MFRC522:
 
     def __init__(self, spd: int = 1000000) -> None:
         """Initialize the MFRC522 RFID reader."""
-        try:
-            self.spi = spidev.SpiDev()
-            self.spi.open(0, 0)
-            self.spi.max_speed_hz = spd
-            GPIO.setmode(GPIO.BOARD)
-            GPIO.setup(self.NRSTPD, GPIO.OUT)
-            GPIO.output(self.NRSTPD, 1)
-            self.MFRC522_Init()
-            logger.info("MFRC522 initialized successfully")
-        except Exception as e:
-            logger.error("Failed to initialize MFRC522: %s", e)
-            self.GPIO_CLEAN()
-            raise
+        if not IS_RASPBERRY_PI:
+            logger.warning("Not running on Pi, MFRC522 in mock mode.")
+            return # Don't initialize hardware in mock mode
+
+        self.spi = spidev.SpiDev()
+        self.spi.open(0, 0)
+        self.spi.max_speed_hz = spd
+
+        # Set pin numbering mode - Rely on mode set by gpiozero (via main.py env var)
+        logger.info("MFRC522: Assuming GPIO mode is already set (expecting BCM from gpiozero config).")
+
+        # Removed NRSTPD pin initialization using RPi.GPIO
+        # try:
+        #     GPIO.setup(self.NRSTPD, GPIO.OUT)
+        #     GPIO.output(self.NRSTPD, 1)
+        #     logger.info(f"MFRC522: Initialized NRSTPD pin {self.NRSTPD}")
+        # except Exception as e:
+        #      logger.warning(f"MFRC522: Failed to initialize NRSTPD pin {self.NRSTPD}: {e}. RFID might still work.")
+        
+        self.MFRC522_Init()
 
     def MFRC522_Reset(self) -> None:
         """Reset the MFRC522 RFID reader."""
@@ -391,7 +398,7 @@ class MFRC522:
 
     def MFRC522_Init(self) -> None:
         """Initialize the MFRC522 RFID reader."""
-        GPIO.output(self.NRSTPD, 1)
+        # GPIO.output(self.NRSTPD, 1)
         self.MFRC522_Reset()
 
         self.Write_MFRC522(self.TModeReg, 0x8D)
@@ -404,8 +411,12 @@ class MFRC522:
         self.AntennaOn()
 
     def GPIO_CLEAN(self) -> None:
-        """Clean up GPIO."""
-        GPIO.cleanup()
+        """Perform cleanup operations. (Original RPi.GPIO cleanup removed)"""
+        # GPIO.cleanup(self.NRSTPD) # Removed RPi.GPIO cleanup call
+        logger.info("MFRC522: GPIO cleanup is now handled externally (e.g., by gpiozero or main process). Nothing to do here.")
+        # If SPI cleanup is needed, it could go here, but spidev usually handles this
+        # self.spi.close() # Uncomment if explicit SPI close is desired/needed
+        pass
 
 class RFIDReader:
     """High-level interface for RFID operations."""

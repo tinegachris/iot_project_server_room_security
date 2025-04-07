@@ -12,24 +12,23 @@ Dependencies:
     - python-dotenv: For environment variable management
 """
 
-# import os # No longer needed here
-
-# Force GPIOZero to use lgpio factory - MUST be set before importing gpiozero
-# os.environ['GPIOZERO_PIN_FACTORY'] = 'lgpio' # Removed - Attempting to use RPi.GPIO fallback
+# Force GPIOZero to use RPi.GPIO factory
+import os # Re-import where it was originally
+os.environ['GPIOZERO_PIN_FACTORY'] = 'rpigpio'
 
 import time
 import logging
 import signal
 import sys
 import json
-import os # Re-import where it was originally
 import threading
 from pathlib import Path
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, ClassVar, Tuple
+from typing import Dict, Any, Optional, ClassVar, Tuple, Callable
 from dotenv import load_dotenv
 from werkzeug.serving import run_simple
+import werkzeug.serving # Need this for shutdown
 
 from .sensors import SensorManager
 from .camera import CameraManager, CameraConfig
@@ -44,7 +43,8 @@ logging.basicConfig(
     level=os.getenv('LOG_LEVEL', 'INFO'),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/home/admin/iot_project_server_room_security/logs/raspberrypi.log'),
+        # Use environment variable for log file path with a default
+        logging.FileHandler(os.getenv('RASPBERRYPI_LOG_FILE', '/home/admin/iot_project_server_room_security/logs/raspberrypi.log')),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -86,9 +86,12 @@ class SystemConfig:
 class ServerRoomMonitor:
     """Main class for server room monitoring system."""
 
-    def __init__(self, config_path: str = 'config.json') -> None:
+    def __init__(self) -> None:
         """Initialize the monitoring system."""
-        self.config = self._load_config(config_path)
+        # Load configuration directly from environment variables
+        self.config = SystemConfig.from_env()
+        logger.info("Configuration loaded from environment variables.")
+
         self.sensor_manager: Optional[SensorManager] = None
         self.camera_manager: Optional[CameraManager] = None
         self.notification_manager: Optional[NotificationManager] = None
@@ -97,19 +100,7 @@ class ServerRoomMonitor:
         self.setup_signal_handlers()
         self.api_thread: Optional[threading.Thread] = None
         self.api_server = None
-
-    def _load_config(self, config_path: str) -> SystemConfig:
-        """Load system configuration from file and environment variables."""
-        try:
-            config_file = Path(config_path)
-            if config_file.exists():
-                with open(config_file) as f:
-                    config_data = json.load(f)
-                    return SystemConfig(**config_data)
-            return SystemConfig.from_env()
-        except Exception as e:
-            logger.error("Error loading config: %s", e)
-            return SystemConfig.from_env()
+        self._api_server_shutdown_trigger: Optional[Callable[[], None]] = None # To trigger shutdown
 
     def setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -120,8 +111,29 @@ class ServerRoomMonitor:
         """Handle system shutdown signals."""
         logger.info("Shutdown signal received. Cleaning up...")
         self.running = False
+
+        # Trigger API server shutdown first
+        if self._api_server_shutdown_trigger:
+            logger.info("Attempting to trigger API server shutdown...")
+            try:
+                 # This relies on run_simple supporting shutdown, might need adjustment
+                 # Alternatively, use a different server like waitress with explicit shutdown
+                 self._api_server_shutdown_trigger()
+            except Exception as e:
+                 logger.error(f"Error triggering API server shutdown: {e}")
+
+        # Now cleanup other components
         self.cleanup()
-        logger.info("Attempting to shut down API server...")
+
+        # Wait for API thread to finish
+        if self.api_thread and self.api_thread.is_alive():
+            logger.info("Waiting for API server thread to join...")
+            self.api_thread.join(timeout=10.0) # Wait up to 10 seconds
+            if self.api_thread.is_alive():
+                 logger.warning("API server thread did not join cleanly.")
+
+        logger.info("Firmware shutdown complete.")
+        sys.exit(0) # Ensure clean exit
 
     def perform_health_check(self) -> None:
         """Perform system health check and send status report."""
@@ -190,18 +202,31 @@ class ServerRoomMonitor:
         """Clean up system resources."""
         try:
             if self.sensor_manager:
+                logger.info("Cleaning up SensorManager...")
                 self.sensor_manager.cleanup()
-            logger.info("System resources cleaned up successfully")
+                logger.info("SensorManager cleanup finished.")
+            else:
+                logger.info("SensorManager was not initialized, skipping cleanup.")
 
-            # Attempt to clean up GPIO if door lock used it (add if needed)
-            # try:
-            #     import RPi.GPIO as GPIO
-            #     GPIO.cleanup()
-            # except Exception as e:
-            #     logger.warning(f"Could not cleanup GPIO: {e}")
+            # Camera manager cleanup (if needed)
+            if self.camera_manager:
+                logger.info("Cleaning up CameraManager...")
+                # Assuming CameraManager has a cleanup method
+                try:
+                    self.camera_manager.cleanup()
+                    logger.info("CameraManager cleanup finished.")
+                except AttributeError:
+                    logger.warning("CameraManager does not have a cleanup method.")
+                except Exception as e:
+                    logger.error(f"Error during CameraManager cleanup: {e}")
+            else:
+                 logger.info("CameraManager was not initialized, skipping cleanup.")
+
+            # Note: GPIO cleanup for the door lock is handled by atexit in api_server.py
+            logger.info("System resource cleanup process completed.")
 
         except Exception as e:
-            logger.error("Error during cleanup: %s", e)
+            logger.error("Error during main cleanup routine: %s", e, exc_info=True)
 
     def start_api_server(self) -> None:
         if not self.sensor_manager or not self.camera_manager:
@@ -218,14 +243,39 @@ class ServerRoomMonitor:
             host = "0.0.0.0" # Listen on all interfaces
             port = int(os.getenv("RASPBERRY_PI_API_PORT", "5000")) # Get port from env or default 5000
 
+            # Prepare shutdown mechanism for run_simple (requires newer werkzeug)
+            shutdown_event = threading.Event()
+            self._api_server_shutdown_trigger = shutdown_event.set
+
+            def run_server():
+                # Create a simple server environment
+                # This is a basic way; production might use WSGI server directly
+                try:
+                    # Check if shutdown_trigger attribute exists (newer werkzeug versions)
+                    if hasattr(werkzeug.serving, 'make_server'):
+                        srv = werkzeug.serving.make_server(host, port, self.api_server, threaded=True)
+                        self._api_server_shutdown_trigger = srv.shutdown # More reliable shutdown
+                        logger.info(f"Flask API server (make_server) starting on http://{host}:{port}")
+                        srv.serve_forever()
+                    else:
+                        # Fallback for older werkzeug, shutdown might be less reliable
+                        logger.info(f"Flask API server (run_simple) starting on http://{host}:{port}")
+                        run_simple(host, port, self.api_server, use_reloader=False, use_debugger=False, threaded=True)
+                        # run_simple doesn't have a direct shutdown method easily exposed here
+                        # Using the event is a workaround signal
+                        shutdown_event.wait() # Keep thread alive until shutdown is triggered
+                        logger.info("run_simple server loop exiting due to shutdown trigger.")
+                except Exception as e:
+                    logger.error(f"API server thread encountered an error: {e}", exc_info=True)
+                finally:
+                    logger.info("API server thread finished.")
+
             self.api_thread = threading.Thread(
-                target=run_simple,
-                args=(host, port, self.api_server),
-                kwargs={"use_reloader": False, "use_debugger": False, "threaded": True},
-                daemon=True # Set as daemon so it exits when main thread exits
+                target=run_server,
+                daemon=False # Make it non-daemon so we can join it
             )
             self.api_thread.start()
-            logger.info(f"Flask API server started in background thread on http://{host}:{port}")
+            logger.info(f"Flask API server started in background thread.")
 
         except Exception as e:
             logger.error(f"Failed to start API server thread: {e}", exc_info=True)
@@ -248,52 +298,50 @@ class ServerRoomMonitor:
                 logger.info("Starting SensorManager monitoring threads...")
                 self.sensor_manager.start()
 
-            # Start the Flask API server in a background thread
+            # Start the API server in a background thread
             logger.info("Starting API server thread...")
             self.start_api_server()
 
-            retry_count = 0
+            # Main loop - Check health and keep running
+            logger.info("Entering main monitoring loop...")
             while self.running:
-                try:
-                    # Get sensor status
-                    if self.sensor_manager:
-                        sensor_status = self.sensor_manager.get_sensor_status()
-                    else:
-                        sensor_status = {"error": "Sensor manager not initialized"}
+                # Perform periodic health checks
+                self.perform_health_check()
 
-                    # Check for storage issues
-                    storage_status = self.check_storage_space()
-                    if storage_status.get('low_space', False) and self.notification_manager:
-                        alert = create_intrusion_alert(
-                            event_type="storage_warning",
-                            message="Low storage space detected",
-                            sensor_data=storage_status
-                        )
-                        self.notification_manager.send_alert(alert, channels=['email'])
+                # Check if sensor manager or API thread died unexpectedly
+                if self.sensor_manager and not self.sensor_manager.is_healthy():
+                    logger.error("SensorManager reported unhealthy state. Shutting down...")
+                    self.handle_shutdown(signal.SIGTERM, None) # Trigger shutdown
+                    break # Exit loop
 
-                    # Perform health check
-                    self.perform_health_check()
+                if self.api_thread and not self.api_thread.is_alive():
+                     logger.error("API server thread died unexpectedly. Shutting down...")
+                     self.handle_shutdown(signal.SIGTERM, None) # Trigger shutdown
+                     break # Exit loop
 
-                    time.sleep(self.config.poll_interval)
-                    retry_count = 0  # Reset retry count on successful iteration
+                # Sleep for a short interval before next check
+                # The actual sensor checks are happening in their own threads
+                time.sleep(self.config.poll_interval)
 
-                except Exception as e:
-                    logger.error("Error during monitoring: %s", e)
-                    retry_count += 1
+            logger.info("Main loop exited.")
 
-                    if retry_count >= self.config.max_retries:
-                        logger.critical("Maximum retry attempts reached. Shutting down...")
-                        self.running = False
-                    else:
-                        logger.info("Retrying in %d seconds...", self.config.poll_interval * 2)
-                        time.sleep(self.config.poll_interval * 2)
-
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received. Initiating shutdown...")
+            self.handle_shutdown(signal.SIGINT, None)
         except Exception as e:
-            logger.critical("Fatal error: %s", e)
-            self.running = False
+            logger.critical(f"Unhandled exception in main run loop: {e}", exc_info=True)
+            self.handle_shutdown(signal.SIGTERM, None) # Attempt graceful shutdown on error
         finally:
+            # Final cleanup call just in case shutdown wasn't fully handled
+            logger.info("Executing final cleanup in finally block...")
             self.cleanup()
-            logger.info("Server Room Monitoring System stopped.")
+            # Ensure GPIO is cleaned up if atexit didn't run (e.g., forceful kill)
+            try:
+                from .api_server import gpio_cleanup
+                gpio_cleanup()
+            except Exception as gpio_e:
+                logger.warning(f"Error during final GPIO cleanup attempt: {gpio_e}")
+            logger.info("ServerRoomMonitor run method finished.")
 
 def main() -> None:
     """Entry point for the monitoring system."""

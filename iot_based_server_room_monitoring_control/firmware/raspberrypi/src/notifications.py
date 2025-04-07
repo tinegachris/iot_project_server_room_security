@@ -22,7 +22,7 @@ import smtplib
 from email.message import EmailMessage
 import requests
 import json
-import copy # ✅ Import copy for deep copies
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Load environment variables
-load_dotenv()
+# load_dotenv() # Removed - Should be loaded once in main.py
 
 @dataclass
 class AlertData:
@@ -447,14 +447,15 @@ def create_intrusion_alert(
     sensor_data: Optional[Dict[str, Any]] = None
 ) -> AlertData:
     """Create an alert for intrusion events."""
-    return AlertData(
+    alert = AlertData(
         event_type=event_type,
         message=message,
         timestamp=datetime.now(),
         media_url=media_url,
         sensor_data=sensor_data,
-        severity="critical"
+        severity="warning" # Default severity for intrusion
     )
+    return alert
 
 def create_rfid_alert(
     event_type: str,
@@ -477,27 +478,40 @@ def create_rfid_alert(
         severity="critical" if event_type == "unauthorized_access" else "medium"
     )
 
-def main() -> None:
-    """Test the notification system."""
-    notification_manager = NotificationManager()
-
-    # Test intrusion alert
-    intrusion_alert = create_intrusion_alert(
-        event_type="motion_detected",
-        message="Motion detected in server room",
-        media_url="http://example.com/video.h264",
-        sensor_data={"location": "main_entrance", "duration": "5s"}
-    )
-    notification_manager.send_alert(intrusion_alert)
-
-    # Test RFID alert
-    rfid_alert = create_rfid_alert(
-        event_type="unauthorized_access",
-        message="Unauthorized RFID access attempt",
-        uid="123-456-789",
-        media_url="http://example.com/image.jpg"
-    )
-    notification_manager.send_alert(rfid_alert)
-
+# Moved main test function
 if __name__ == "__main__":
+    def main() -> None:
+        """Main function for testing notifications."""
+        logger.info("Testing NotificationManager...")
+        manager = NotificationManager()
+
+        # Create sample alert
+        test_alert = create_intrusion_alert(
+            event_type="test_event",
+            message="This is a test alert from notifications.py",
+            sensor_data={"temp": 25.5, "humidity": 60},
+            media_url=None # "https://via.placeholder.com/150" # Optional image
+        )
+
+        # Test sending to server API (most likely to be configured)
+        logger.info("--- Testing Server API Send ---")
+        manager.send_alert(test_alert, channels=['server'])
+        time.sleep(2)
+
+        # Test sending via Email
+        logger.info("--- Testing Email Send ---")
+        manager.send_alert(test_alert, channels=['email'])
+        time.sleep(2)
+
+        # Test sending via SMS
+        logger.info("--- Testing SMS Send ---")
+        manager.send_alert(test_alert, channels=['sms'])
+        time.sleep(2)
+
+        # Test sending via FCM
+        logger.info("--- Testing FCM Send ---")
+        manager.send_alert(test_alert, channels=['fcm'])
+
+        logger.info("Notification tests completed.")
+
     main()
