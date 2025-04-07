@@ -22,12 +22,14 @@ sleep 5
 
 echo "Starting Raspberry Pi firmware..."
 
-(cd "$PROJECT_DIR" && $PYTHON_PATH -m "$RASPBERRY_PI_MODULE" >> "$LOG_DIR/raspberrypi.log" 2>&1) &
+# Run Pi firmware with sudo for GPIO access via lgpio
+(cd "$PROJECT_DIR" && sudo $PYTHON_PATH -m "$RASPBERRY_PI_MODULE" >> "$LOG_DIR/raspberrypi.log" 2>&1) &
 RASPBERRY_PI_PID=$!
 echo "Raspberry Pi firmware started with PID $RASPBERRY_PI_PID. Logging to $LOG_DIR/raspberrypi.log"
 
 echo "Starting Server application..."
 
+# Server likely doesn't need sudo
 (cd "$PROJECT_DIR" && $PYTHON_PATH -m "$SERVER_MODULE" >> "$LOG_DIR/server.log" 2>&1) &
 SERVER_PID=$!
 echo "Server application started with PID $SERVER_PID. Logging to $LOG_DIR/server.log"
