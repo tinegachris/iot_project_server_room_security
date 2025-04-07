@@ -23,6 +23,7 @@ from email.message import EmailMessage
 import requests
 import json
 import time
+import copy
 
 # Configure logging
 logging.basicConfig(
@@ -354,9 +355,6 @@ class NotificationManager:
                 except TypeError as json_err:
                     logger.warning(f"Could not make sensor_data fully JSON serializable for event '{alert.event_type}': {json_err}. Sending without it.")
                     serializable_sensor_data = {"error": "Data not serializable"}
-                except Exception as deepcopy_err:
-                     logger.warning(f"Could not deepcopy sensor_data for event '{alert.event_type}': {deepcopy_err}. Sending without it.")
-                     serializable_sensor_data = {"error": "Data could not be copied"}
             elif alert.sensor_data is not None:
                 # Handle cases where sensor_data is not a dict but also not None
                 logger.warning(f"Sensor data for event '{alert.event_type}' is not a dictionary. Type: {type(alert.sensor_data)}. Sending as string.")

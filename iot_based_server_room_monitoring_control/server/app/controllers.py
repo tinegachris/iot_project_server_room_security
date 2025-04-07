@@ -294,7 +294,6 @@ async def process_pi_event(
                 "sensor_data": event.sensor_data,
                 "media_url": incoming_media_url # Store the original URL here for reference
             },
-            image_url=image_url, # Store determined image URL
             video_url=video_url, # Store determined video URL
             severity=event.severity,
             source=event.source,
