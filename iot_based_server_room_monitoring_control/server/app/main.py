@@ -19,7 +19,7 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(sys.stdout),
         # Use environment variable for log file path with a default
-        logging.FileHandler(os.getenv('SERVER_LOG_FILE', '/home/admin/iot_project_server_room_security/logs/server.log'))
+        logging.FileHandler(os.getenv('SERVER_LOG_FILE', os.path.join(os.getcwd(), 'logs/server.log')))
     ]
 )
 logger = logging.getLogger(__name__)
