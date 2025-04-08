@@ -1,11 +1,36 @@
 import os
 import logging
+import json
+import platform # Import platform directly
 from functools import wraps
 from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException, Unauthorized, Forbidden, BadRequest, InternalServerError, NotFound
 from dotenv import load_dotenv
-import RPi.GPIO as GPIO # ✅ Import GPIO library
-import atexit # ✅ To ensure GPIO cleanup
+
+# Platform check
+IS_RPI = platform.machine().startswith(('arm', 'aarch64'))
+logger = logging.getLogger(__name__ + ".platform_check") # Use a specific logger
+if not IS_RPI:
+    logger.warning("Platform check: Not running on Raspberry Pi/ARM. Hardware features will be mocked.")
+else:
+    logger.info("Platform check: Running on Raspberry Pi/ARM.")
+
+# Conditionally import RPi.GPIO
+GPIO = None
+atexit = None
+if IS_RPI:
+    try:
+        import RPi.GPIO as GPIO # ✅ Import GPIO library
+        import atexit # ✅ To ensure GPIO cleanup
+        logger.info("RPi.GPIO imported successfully.")
+    except (RuntimeError, ModuleNotFoundError) as e:
+        logger.warning(f"Failed to import RPi.GPIO: {e}. GPIO functionality will be disabled.")
+        GPIO = None # Ensure GPIO is None if import fails
+        atexit = None
+else:
+    # Warning is already logged above
+    pass
+
 import subprocess # ✅ Import subprocess for restart
 import shutil # For storage check
 import psutil # For network check
@@ -51,6 +76,13 @@ def setup_door_lock():
     global IS_GPIO_SETUP
     if IS_GPIO_SETUP:
         return # Already setup
+
+    if not IS_RPI or not GPIO:
+        logger.warning("Not on RPi or GPIO unavailable. Skipping real door lock setup.")
+        IS_GPIO_SETUP = False # Explicitly set to false for clarity
+        return
+
+    # Proceed with real GPIO setup only if on RPi and GPIO is available
     try:
         GPIO.setmode(GPIO.BCM) # Use Broadcom pin numbering
         GPIO.setup(DOOR_LOCK_PIN, GPIO.OUT)
@@ -59,33 +91,45 @@ def setup_door_lock():
         IS_GPIO_SETUP = True
         logger.info(f"Door lock GPIO {DOOR_LOCK_PIN} initialized. Initial state: UNLOCKED (HIGH)")
         # Register cleanup function to run on exit
-        atexit.register(gpio_cleanup)
+        if atexit:
+            atexit.register(gpio_cleanup)
+        else:
+             logger.warning("atexit module not available, GPIO cleanup might not run on exit.")
     except RuntimeError as e:
         # Handle cases where GPIO might already be in use or setup fails
         logger.error(f"Could not set up GPIO for door lock (Pin {DOOR_LOCK_PIN}): {e}. Might need root privileges or pin conflict.")
-        # Decide if this is critical - perhaps raise an exception or just log?
+        IS_GPIO_SETUP = False
     except Exception as e:
         logger.error(f"Failed to setup door lock GPIO {DOOR_LOCK_PIN}: {e}")
+        IS_GPIO_SETUP = False
 
 def gpio_cleanup():
     global IS_GPIO_SETUP
-    if IS_GPIO_SETUP:
+    if IS_RPI and GPIO and IS_GPIO_SETUP:
         logger.info("Cleaning up door lock GPIO...")
         GPIO.cleanup(DOOR_LOCK_PIN)
         IS_GPIO_SETUP = False
+    elif not IS_RPI or not GPIO:
+         logger.debug("Not on RPi or GPIO unavailable. Skipping real GPIO cleanup.")
+         IS_GPIO_SETUP = False # Ensure state is consistent
+    # else: IS_RPI is true but setup failed or was already cleaned up
 
 def lock_door():
+    if not IS_RPI or not GPIO:
+        logger.warning("Mock lock: Not on RPi or GPIO unavailable.")
+        # Simulate success for mock environment
+        return {"status": "success", "door_locked": True, "mock": True}
+
     if not IS_GPIO_SETUP:
-        logger.error("Cannot lock door: GPIO not initialized.")
+        logger.error("Cannot lock door: GPIO not initialized properly.")
         return {"status": "error", "message": "GPIO not initialized"}
     try:
         GPIO.output(DOOR_LOCK_PIN, GPIO.LOW) # Set pin LOW to lock
         logger.info(f"Door LOCKED (GPIO {DOOR_LOCK_PIN} set LOW)")
         # Update sensor manager status if possible
         if sensor_manager:
-            # Assuming sensor_manager has _update_sensor_status method
              try:
-                sensor_manager._update_sensor_status('door_lock', True, data={'locked': True})
+                 sensor_manager._update_sensor_status('door_lock', True, data={'locked': True})
              except AttributeError:
                  logger.warning("sensor_manager does not have _update_sensor_status")
         return {"status": "success", "door_locked": True}
@@ -94,8 +138,13 @@ def lock_door():
         return {"status": "error", "message": str(e)}
 
 def unlock_door():
+    if not IS_RPI or not GPIO:
+        logger.warning("Mock unlock: Not on RPi or GPIO unavailable.")
+        # Simulate success for mock environment
+        return {"status": "success", "door_locked": False, "mock": True}
+
     if not IS_GPIO_SETUP:
-        logger.error("Cannot unlock door: GPIO not initialized.")
+        logger.error("Cannot unlock door: GPIO not initialized properly.")
         return {"status": "error", "message": "GPIO not initialized"}
     try:
         GPIO.output(DOOR_LOCK_PIN, GPIO.HIGH) # Set pin HIGH to unlock
@@ -279,7 +328,7 @@ def create_pi_api_server(sm, cm):
     def get_pi_logs():
         """Retrieve Pi system logs (e.g., last N lines of firmware log)."""
         limit = request.args.get('limit', default=100, type=int)
-        log_file_path = '/home/admin/iot_project_server_room_security/logs/raspberrypi.log' # Hardcoded for now
+        log_file_path = os.getenv('RASPBERRYPI_LOG_FILE', os.path.join(os.getcwd(), 'logs/raspberrypi.log'))
         try:
             if not os.path.exists(log_file_path):
                  raise NotFound(f"Log file not found: {log_file_path}")
@@ -362,7 +411,7 @@ def create_pi_api_server(sm, cm):
                     logger.error(f"Failed to initiate reboot: {e}")
                     raise InternalServerError(f"Failed to initiate reboot: {e}")
             elif action == "clear_logs":
-                 log_file_path = '/home/admin/iot_project_server_room_security/logs/raspberrypi.log'
+                 log_file_path = os.getenv('RASPBERRYPI_LOG_FILE', os.path.join(os.getcwd(), 'logs/raspberrypi.log'))
                  try:
                      # Clear the log file safely
                      with open(log_file_path, 'w') as f:

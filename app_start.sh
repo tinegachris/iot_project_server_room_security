@@ -1,11 +1,16 @@
 #!/bin/bash
 
 # Define project base directory (optional, but helps keep paths clean)
-PROJECT_DIR="/home/admin/iot_project_server_room_security"
+PROJECT_DIR=$(pwd)
 # Define module paths for python -m
 RASPBERRY_PI_MODULE="iot_based_server_room_monitoring_control.firmware.raspberrypi.src.main"
 SERVER_MODULE="iot_based_server_room_monitoring_control.server.app.main"
-PYTHON_PATH="/home/admin/iot_project_server_room_security/venv/bin/python3"
+# Check if .venv path exists, otherwise use venv
+if [ -f "$PROJECT_DIR/.venv/bin/python3" ]; then
+    PYTHON_PATH="$PROJECT_DIR/.venv/bin/python3"
+else
+    PYTHON_PATH="$PROJECT_DIR/venv/bin/python3"
+fi
 LOG_DIR="$PROJECT_DIR/logs"
 
 # Ensure the log directory exists

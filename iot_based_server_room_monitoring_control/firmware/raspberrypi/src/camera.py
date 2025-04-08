@@ -52,9 +52,10 @@ except ImportError:
     logger.warning("Running in mock mode - no Raspberry Pi camera hardware detected")
 
 # Get the user's home directory for storing files
-USER_HOME = os.path.expanduser('~')
-DEFAULT_OUTPUT_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'videos')
-DEFAULT_IMAGE_DIR = os.path.join(USER_HOME, 'iot_project_server_room_security', 'images')
+# Use current working directory instead of user's home directory
+CWD = os.getcwd()
+DEFAULT_OUTPUT_DIR = os.path.join(CWD, 'iot_project_server_room_security/videos')
+DEFAULT_IMAGE_DIR = os.path.join(CWD, 'iot_project_server_room_security/images')
 
 @dataclass
 class CameraConfig:

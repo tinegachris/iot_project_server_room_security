@@ -44,7 +44,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         # Use environment variable for log file path with a default
-        logging.FileHandler(os.getenv('RASPBERRYPI_LOG_FILE', '/home/admin/iot_project_server_room_security/logs/raspberrypi.log')),
+        logging.FileHandler(os.getenv('RASPBERRYPI_LOG_FILE', os.path.join(os.getcwd(), 'logs/raspberrypi.log'))),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -67,11 +67,11 @@ class SystemConfig:
         resolution: Tuple[int, int] = (int(resolution_str[0]), int(resolution_str[1]))
 
         # Get the project base directory
-        PROJECT_DIR = os.getenv('PROJECT_DIR', '/home/admin/iot_project_server_room_security')
+        PROJECT_DIR = os.getenv('PROJECT_DIR', os.path.join(os.getcwd()))
 
         # Update the output and image directories to use the project base directory
-        DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_DIR, 'videos')
-        DEFAULT_IMAGE_DIR = os.path.join(PROJECT_DIR, 'images')
+        DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_DIR, 'media/videos')
+        DEFAULT_IMAGE_DIR = os.path.join(PROJECT_DIR, 'media/images')
 
         camera_config = CameraConfig(
             resolution=resolution,
