@@ -44,7 +44,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         # Use environment variable for log file path with a default
-        logging.FileHandler(os.getenv('RASPBERRYPI_LOG_FILE', '/home/admin/iot_project_server_room_security/logs/raspberrypi.log')),
+        logging.FileHandler(os.getenv('RASPBERRYPI_LOG_FILE', os.path.join(os.getcwd(), 'logs/raspberrypi.log'))),
         logging.StreamHandler(sys.stdout)
     ]
 )
