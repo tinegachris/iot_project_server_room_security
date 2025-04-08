@@ -186,3 +186,8 @@ cython_debug/
 
 # Cursor
 .cursorrules
+
+# output
+video/
+image/
+media/
