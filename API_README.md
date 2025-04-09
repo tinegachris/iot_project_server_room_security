@@ -344,3 +344,143 @@ Example response:
   "username": "user1"
 }
 ```
+
+### Alert Endpoint Example
+
+To send an alert, use the following `curl` command:
+
+```bash
+curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/alert" \
+     -H "Authorization: Bearer <access_token>" \
+     -H "Content-Type: application/json" \
+     -d '{"message": "Test alert message", "video_url": "http://example.com/video.mp4"}'
+```
+
+- **Description**: This command sends an alert with a message and an optional video URL.
+- **Response**: JSON confirming the alert was processed successfully, including the log ID and timestamp.
+
+Example response:
+
+```json
+{
+  "message": "Alert processed successfully",
+  "log_id": 91,
+  "timestamp": "2025-04-09T07:11:15.836352"
+}
+```
+
+### Test Sensors Endpoint Example
+
+To test the sensors, use the following `curl` command:
+
+```bash
+curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/control" \
+     -H "Authorization: Bearer <access_token>" \
+     -H "Content-Type: application/json" \
+     -d '{"action": "test_sensors"}'
+```
+
+- **Description**: This command sends a `test_sensors` action to the Raspberry Pi to verify sensor functionality.
+- **Response**: JSON confirming the command was sent successfully, including the results of each sensor test.
+
+Example response:
+
+```json
+{
+  "message": "Command 'test_sensors' sent to Raspberry Pi successfully",
+  "timestamp": "2025-04-09T07:13:37.285211",
+  "result_from_pi": {
+    "message": "Sensor test completed",
+    "results": {
+      "camera": {
+        "details": "Camera inactive",
+        "status": "error"
+      },
+      "door": {
+        "details": "Current state: closed",
+        "status": "ok"
+      },
+      "door_lock": {
+        "details": "Test not fully implemented (check logs for state)",
+        "status": "info"
+      },
+      "motion": {
+        "details": "Current state: False",
+        "status": "ok"
+      },
+      "rfid": {
+        "details": "RFIDReader.read_card() got an unexpected keyword argument 'timeout'",
+        "status": "error"
+      },
+      "window": {
+        "details": "Current state: closed",
+        "status": "ok"
+      }
+    },
+    "status": "success",
+    "summary": "One or more tests failed"
+  }
+}
+```
+
+### Health Check Endpoint Example
+
+To check the health status of the server, use the following `curl` command:
+
+```bash
+curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/health" \
+     -H "Authorization: Bearer <access_token>"
+```
+
+- **Description**: This command retrieves the health status of the server, including database connectivity and version information.
+- **Response**: JSON with the health status, database connection status, and server version.
+
+Example response:
+
+```json
+{
+  "status": "healthy",
+  "database": "connected",
+  "version": "1.0.0"
+}
+```
+
+### Door Sensor Events Endpoint Example
+
+To retrieve events from the door sensor, use the following `curl` command:
+
+```bash
+curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/sensors/door/events" \
+     -H "Authorization: Bearer <access_token>"
+```
+
+- **Description**: This command retrieves events recorded by the door sensor.
+- **Response**: JSON array of events. An empty array indicates no events recorded.
+
+Example response:
+
+```json
+[]
+```
+
+### Door Sensor Stats Endpoint Example
+
+To retrieve statistics for the door sensor, use the following `curl` command:
+
+```bash
+curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/sensors/door/stats" \
+     -H "Authorization: Bearer <access_token>"
+```
+
+- **Description**: This command retrieves statistics for the door sensor, including the total number of events in the last 24 hours and the time of the last event.
+- **Response**: JSON with sensor statistics.
+
+Example response:
+
+```json
+{
+  "sensor_type": "door",
+  "total_events_last_24h": 0,
+  "last_event_time": null
+}
+```
