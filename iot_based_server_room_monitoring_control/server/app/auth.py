@@ -21,6 +21,8 @@ load_dotenv()
 
 # Security configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
+# Log the loaded SECRET_KEY to verify
+logger.info(f"Loaded SECRET_KEY: '{SECRET_KEY[:5]}...{SECRET_KEY[-5:]}'" if SECRET_KEY else "SECRET_KEY not loaded!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -28,7 +30,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# Ensure tokenUrl starts with a slash
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 
 # Load expected API Key for Pi communication
 EXPECTED_PI_API_KEY = os.getenv("RASPBERRY_PI_API_KEY")
@@ -86,14 +89,28 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Explicitly pass key to decode
+        payload = jwt.decode(token, key=SECRET_KEY, algorithms=[ALGORITHM]) 
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
+    # Log the username we are looking for
+    logger.debug(f"Looking up user '{username}' in database for token validation.")
+    # --- Remove DB Session Logging ---
+    # if db is None:
+    #     logger.error("!!! DB session is None in get_current_user !!!")
+    #     raise credentials_exception
+    # if not isinstance(db, Session):
+    #     logger.error(f"!!! DB object is not a Session in get_current_user (type: {type(db)}) !!!")
+    #     raise credentials_exception
+    # logger.debug(f"DB session object in get_current_user: {db}")
+    # --- End DB Session Logging ---
     user = db.query(User).filter(User.username == username).first()
+    # Log whether the user was found
+    logger.debug(f"Database query result for user '{username}': {'Found' if user else 'Not Found'}") 
     if user is None:
         raise credentials_exception
     return user
