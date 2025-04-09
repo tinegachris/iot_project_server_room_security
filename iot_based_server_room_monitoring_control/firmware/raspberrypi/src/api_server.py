@@ -208,7 +208,7 @@ def create_pi_api_server(sm, cm):
 
     # --- API Routes ---
 
-    @app.route("/api/status", methods=['GET'])
+    @app.route("/api/v1/status", methods=['GET'])
     @require_api_key
     def get_pi_status():
         """Return overall status from SensorManager and CameraManager."""
@@ -227,7 +227,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting Pi status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get status: {e}")
 
-    @app.route("/api/sensors/<string:sensor_type>", methods=['GET'])
+    @app.route("/api/v1/sensors/<string:sensor_type>", methods=['GET'])
     @require_api_key
     def get_sensor_data(sensor_type):
         """Return data for a specific sensor type."""
@@ -246,7 +246,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting sensor data for {sensor_type}: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get sensor data: {e}")
 
-    @app.route("/api/camera/status", methods=['GET'])
+    @app.route("/api/v1/camera/status", methods=['GET'])
     @require_api_key
     def get_camera_pi_status():
         """Return camera status."""
@@ -259,7 +259,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting camera status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get camera status: {e}")
 
-    @app.route("/api/rfid/status", methods=['GET'])
+    @app.route("/api/v1/rfid/status", methods=['GET'])
     @require_api_key
     def get_rfid_pi_status():
         """Return RFID reader status."""
@@ -276,7 +276,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting RFID status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get RFID status: {e}")
 
-    @app.route("/api/health", methods=['GET'])
+    @app.route("/api/v1/health", methods=['GET'])
     @require_api_key
     def get_health_status():
         """Return system health metrics."""
@@ -287,7 +287,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting health status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get health status: {e}")
 
-    @app.route("/api/storage", methods=['GET'])
+    @app.route("/api/v1/storage", methods=['GET'])
     @require_api_key
     def get_storage_pi_status():
         """Return storage status."""
@@ -298,7 +298,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting storage status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get storage status: {e}")
 
-    @app.route("/api/network", methods=['GET'])
+    @app.route("/api/v1/network", methods=['GET'])
     @require_api_key
     def get_network_pi_status():
         """Return network status."""
@@ -309,7 +309,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting network status: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get network status: {e}")
 
-    @app.route("/api/config", methods=['POST'])
+    @app.route("/api/v1/config", methods=['POST'])
     @require_api_key
     def update_pi_config():
         """Update Pi configuration (placeholder)."""
@@ -323,7 +323,7 @@ def create_pi_api_server(sm, cm):
         # Example: update specific env var or config file, then maybe restart
         return jsonify({"status": "warning", "message": "Configuration update not fully implemented"})
 
-    @app.route("/api/logs", methods=['GET'])
+    @app.route("/api/v1/logs", methods=['GET'])
     @require_api_key
     def get_pi_logs():
         """Retrieve Pi system logs (e.g., last N lines of firmware log)."""
@@ -345,7 +345,7 @@ def create_pi_api_server(sm, cm):
             logger.error(f"Error getting logs: {e}", exc_info=True)
             raise InternalServerError(f"Failed to get logs: {e}")
 
-    @app.route("/api/firmware/version", methods=['GET'])
+    @app.route("/api/v1/firmware/version", methods=['GET'])
     @require_api_key
     def get_firmware_version():
         """Return firmware version (placeholder)."""
@@ -354,13 +354,13 @@ def create_pi_api_server(sm, cm):
         return jsonify({"version": version})
 
     # Add other firmware check/update endpoints if needed (placeholders)
-    @app.route("/api/firmware/check-updates", methods=['GET'])
+    @app.route("/api/v1/firmware/check-updates", methods=['GET'])
     @require_api_key
     def check_firmware_updates():
         logger.info("Firmware update check requested (NOT IMPLEMENTED)")
         return jsonify({"status": "no-updates", "message": "Update check not implemented"})
 
-    @app.route("/api/control", methods=['POST'])
+    @app.route("/api/v1/control", methods=['POST'])
     @require_api_key
     def control_pi():
         """Execute control commands."""
