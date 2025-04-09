@@ -1,22 +1,28 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Request, BackgroundTasks
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import logging
 import json
 from .database import get_db
 from .controllers import (
     process_alert_and_event, get_sensor_status,
-    execute_control_command, process_pi_event
+    execute_control_command, process_pi_event,
+    authenticate_user
 )
-from .models import LogEntry as DBLogEntry
+from .models import LogEntry as DBLogEntry, User
 from .schemas import (
     LogEntry, Alert, ControlCommand, SensorStatus, SystemHealth,
-    RaspberryPiEvent
+    RaspberryPiEvent,
+    Token,
+    Severity,
+    LogResponse,
+    UserCreate
 )
 from .rate_limit import rate_limit
-from .auth import get_current_user, get_api_key
+from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user
 from ..config.config import config
 from .raspberry_pi_client import RaspberryPiClient
 
@@ -36,7 +42,7 @@ async def get_status(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user) # Re-enable auth
 ):
     """
     GET /status endpoint returns the current status of the server room.
@@ -46,20 +52,22 @@ async def get_status(
         # Get system health metrics
         system_status = await get_sensor_status(db)
 
-        # Add user context
-        system_status["user"] = current_user["username"]
+        # Add user context (use authenticated user)
+        system_status["user"] = current_user.username
         system_status["timestamp"] = datetime.now()
 
-        # Log status check
+        # Log status check (use authenticated user)
         background_tasks.add_task(
             process_alert_and_event,
+            db,
             "status_check",
-            f"Status check by {current_user['username']}",
+            f"Status check by {current_user.username}",
             None,
-            current_user["username"]
+            current_user.username,
+            Severity.INFO
         )
 
-        return system_status
+        return SystemHealth(**system_status)
     except Exception as e:
         logger.error(f"Error getting system status: {e}")
         raise HTTPException(
@@ -67,7 +75,7 @@ async def get_status(
             detail="Failed to retrieve system status"
         )
 
-@router.get("/logs", response_model=List[LogEntry])
+@router.get("/logs", response_model=LogResponse)
 @rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
 async def get_logs(
     request: Request,
@@ -77,7 +85,7 @@ async def get_logs(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     GET /logs endpoint returns a list of log entries with filtering options.
@@ -117,7 +125,7 @@ async def post_alert(
     alert: Alert,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     POST /alert endpoint for manual alert triggering.
@@ -137,11 +145,11 @@ async def post_alert(
             "manual_alert",
             alert.message,
             alert.video_url,
-            current_user["username"]
+            current_user.username
         )
 
         # Log the alert
-        logger.info(f"Alert created by {current_user['username']}: {alert.message}")
+        logger.info(f"Alert created by {current_user.username}: {alert.message}")
 
         return {
             "message": "Alert processed successfully",
@@ -157,16 +165,17 @@ async def post_alert(
             detail="Failed to process alert"
         )
 
-@router.post("/control")
+@router.post("/control") 
 @rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
 async def post_control(
     request: Request,
-    command: ControlCommand,
+    command: ControlCommand, # Restore body param
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user) 
 ):
     """Post control command to the Raspberry Pi and log the action."""
+    # Restore original function body
     try:
         # Validate command
         valid_actions = [
@@ -180,7 +189,7 @@ async def post_control(
             )
 
         # Check user permissions (Example: only admin can restart)
-        if command.action in ["restart_system", "update_firmware"] and not current_user.get("is_admin"):
+        if command.action in ["restart_system", "update_firmware"] and not current_user.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions for this command"
@@ -190,13 +199,13 @@ async def post_control(
         result = await execute_control_command(
             action=command.action,
             db=db,
-            user_id=current_user.get("id"), # Pass user ID for logging
-            parameters=command.parameters # Pass along any parameters
+            user_id=current_user.id, 
+            parameters=command.parameters 
         )
 
         # Log the command execution locally (using background task is an option too)
         # Logging is now handled within execute_control_command
-        # logger.info(f"Control command '{command.action}' initiated by {current_user['username']}")
+        # logger.info(f"Control command '{command.action}' initiated by {current_user.username}") 
 
         return {
             "message": f"Command '{command.action}' sent to Raspberry Pi successfully",
@@ -243,22 +252,35 @@ async def get_sensor_data(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     GET /sensors/{sensor_type} endpoint returns data from a specific sensor.
     """
     try:
-        async with RaspberryPiClient(config["raspberry_pi"]["api_url"]) as client:
+        pi_url = config["raspberry_pi"]["api_url"]
+        pi_key = config["raspberry_pi"]["api_key"]
+
+        if not pi_url:
+            raise HTTPException(status_code=500, detail="Pi URL not configured")
+
+        # Ensure trailing slash for client base_url consistency
+        if not pi_url.endswith('/'):
+            pi_url += '/'
+
+        async with RaspberryPiClient(pi_url, pi_key) as client:
             sensor_data = await client.get_sensor_data(sensor_type)
 
             # Log sensor data retrieval
             background_tasks.add_task(
-                process_alert_and_event,
-                "sensor_data",
-                f"Sensor data retrieved for {sensor_type}",
-                None,
-                current_user["username"]
+                process_alert_and_event, 
+                db=db, # Pass the db session correctly
+                event_type="sensor_data", 
+                message=f"Sensor data retrieved for {sensor_type}", 
+                video_url=None, 
+                username=current_user.username,
+                severity=Severity.INFO, # Add severity
+                sensor_data=sensor_data # Pass the retrieved data
             )
 
             return sensor_data
@@ -275,7 +297,7 @@ async def get_camera_status(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     GET /camera/status endpoint returns camera status and settings.
@@ -290,7 +312,7 @@ async def get_camera_status(
                 "camera_status",
                 "Camera status retrieved",
                 None,
-                current_user["username"]
+                current_user.username
             )
 
             return camera_status
@@ -307,7 +329,7 @@ async def get_rfid_status(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     GET /rfid/status endpoint returns RFID reader status and last read card.
@@ -322,7 +344,7 @@ async def get_rfid_status(
                 "rfid_status",
                 "RFID status retrieved",
                 None,
-                current_user["username"]
+                current_user.username
             )
 
             return rfid_status
@@ -339,7 +361,7 @@ async def capture_image(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     POST /camera/capture endpoint triggers image capture.
@@ -354,7 +376,7 @@ async def capture_image(
                 "image_capture",
                 "Image captured",
                 result.get("image_url"),
-                current_user["username"]
+                current_user.username
             )
 
             return result
@@ -372,7 +394,7 @@ async def record_video(
     background_tasks: BackgroundTasks,
     duration: int = 30,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     POST /camera/record endpoint triggers video recording.
@@ -382,7 +404,7 @@ async def record_video(
             action="record_video",
             parameters={"duration": duration},
             db=db,
-            user_id=current_user.get("id")
+            user_id=current_user.id
         )
         return {
             "message": f"Video recording for {duration}s initiated.",
@@ -406,7 +428,7 @@ async def get_sensor_events(
     background_tasks: BackgroundTasks,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     GET /sensors/{sensor_type}/events endpoint returns events from a specific sensor.
@@ -434,7 +456,7 @@ async def get_sensor_stats(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     GET /sensors/{sensor_type}/stats endpoint returns statistics for a specific sensor.
@@ -451,4 +473,62 @@ async def get_sensor_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch stats for sensor {sensor_type}"
+        )
+
+@router.post("/token", response_model=Token)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    """Standard FastAPI OAuth2 password flow token endpoint."""
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # Use dictionary access for config value with a default
+    access_token_expires = timedelta(minutes=config.get("ACCESS_TOKEN_EXPIRE_MINUTES", 30)) 
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def create_user(
+    request: Request,
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    POST /users endpoint to create a new user.
+    """
+    try:
+        # Check if the current user is an admin
+        if not current_user.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to create a user"
+            )
+
+        # Create the new user
+        new_user = auth_create_user(db, user.username, user.password, user.email, user.is_admin)
+
+        # Log the user creation
+        logger.info(f"User '{new_user.username}' created by '{current_user.username}'.")
+
+        return {
+            "message": "User created successfully",
+            "user_id": new_user.id,
+            "username": new_user.username
+        }
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error creating user: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user"
         )

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
+from .database import get_db
 from .models import (
     AccessLog, SensorEvent, VideoRecord, LogEntry,
     SystemHealth, MaintenanceLog, Alert, User
@@ -16,7 +17,9 @@ from ..config.config import config
 from .schemas import Severity, AlertSeverity
 from .raspberry_pi_client import RaspberryPiClient
 from .schemas import RaspberryPiEvent
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, BackgroundTasks, Depends
+from .auth import verify_password, get_current_user
+from urllib.parse import urlparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -72,13 +75,19 @@ async def get_sensor_status(db: Session) -> Dict[str, Any]:
     try:
         # Get storage information
         total, used, free = shutil.disk_usage("/")
-        # Use .get() for safer config access with a default
-        storage_threshold = config.get("monitoring", {}).get("storage_threshold_gb", 10) # Default 10GB
+        # Use .get() for safer config access with a default, and ensure type is int
+        try:
+            storage_threshold_str = config.get("monitoring", {}).get("storage_threshold_gb", "10") # Default 10GB as string
+            storage_threshold = int(storage_threshold_str) 
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid storage_threshold_gb value '{storage_threshold_str}'. Using default 10.")
+            storage_threshold = 10
+            
         storage = {
             "total_gb": total // (2**30),
             "used_gb": used // (2**30),
             "free_gb": free // (2**30),
-            "low_space": free // (2**30) < storage_threshold
+            "low_space": (free // (2**30)) < storage_threshold # Now comparing int with int
         }
 
         # Get system uptime
@@ -95,8 +104,20 @@ async def get_sensor_status(db: Session) -> Dict[str, Any]:
              # For now, return indicating Pi status unavailable.
              pi_status = {"error": "Raspberry Pi API URL not configured"}
              sensors = {}
+             # Ensure raspberry_pi key exists even if Pi is not configured
+             raspberry_pi_info = {
+                "is_online": False,
+                "last_heartbeat": None,
+                "error": "API URL not configured"
+            }
         else:
-            async with RaspberryPiClient(pi_url, pi_key) as client:
+            # Extract base host/port from configured URL
+            parsed_url = urlparse(pi_url) # pi_url is the full URL like http://host:port/api/v1
+            pi_base_host = f"{parsed_url.scheme}://{parsed_url.netloc}/" # Should be http://host:port/
+        
+            # Pass only host:port to client
+            async with RaspberryPiClient(pi_base_host, pi_key) as client:
+                # Client methods now need to specify full path like /api/v1/status
                  pi_status = await client.get_status()
                  # Process sensor status from Pi response
                  sensors = {}
@@ -149,13 +170,24 @@ async def get_sensor_status(db: Session) -> Dict[str, Any]:
             }
         }
     except Exception as e:
-        logger.error(f"Error getting sensor status: {e}")
+        # Log the full traceback for the exception
+        logger.error(f"Error getting sensor status: {e}", exc_info=True)
+        # Ensure the returned dictionary matches SystemHealth schema even on error
         return {
             "status": "error",
             "sensors": {},
             "storage": {"error": str(e)},
             "uptime": "unknown",
-            "errors": [str(e)]
+            "errors": [str(e)],
+            "last_maintenance": None,
+            "next_maintenance": None,
+            "raspberry_pi": { # Add default raspberry_pi field
+                "is_online": False,
+                "last_heartbeat": None,
+                "error": f"Failed to retrieve status: {e}"
+            },
+            "user": "system", # Add default user
+            "timestamp": datetime.now() # Add default timestamp
         }
 
 async def execute_control_command(
@@ -169,10 +201,14 @@ async def execute_control_command(
     try:
         # Access config hierarchically
         pi_config = config.get("raspberry_pi", {})
-        pi_base_url = pi_config.get("api_url")
+        
+        # Extract base host/port from configured URL
+        pi_full_url = pi_config.get("api_url")
+        parsed_url = urlparse(pi_full_url) # pi_full_url is http://host:port/api/v1
+        pi_base_host = f"{parsed_url.scheme}://{parsed_url.netloc}/" # Should be http://host:port/
         pi_api_key = pi_config.get("api_key")
         
-        if not pi_base_url:
+        if not pi_full_url:
             # Use a more specific error or log and raise HTTP 500?
             logger.error("RASPBERRY_PI_API_URL is not configured in server config (config.yaml or env var)")
             raise HTTPException(
@@ -180,10 +216,13 @@ async def execute_control_command(
                 detail="Raspberry Pi communication endpoint not configured on server."
             )
 
-        logger.info(f"Executing command '{action}' on Pi: {pi_base_url} with params: {parameters}")
-        # Pass the potentially None api_key to the client
-        pi_client = RaspberryPiClient(pi_base_url, pi_api_key)
+        # Let the client construct the full URL
+        logger.info(f"Sending command '{action}' to Pi client with params: {parameters}")
+        
+        # Pass only host:port to client
+        pi_client = RaspberryPiClient(pi_base_host, pi_api_key)
         async with pi_client as client: # Use async context manager
+            # Client methods now specify full path like /api/v1/control
             result = await client.execute_command(action, parameters)
             logger.info(f"Command '{action}' executed on Pi. Result: {result}")
 
@@ -325,3 +364,55 @@ async def process_pi_event(
         # Depending on the background task runner, this might be sufficient.
         # Alternatively, log the error to a dedicated error table/file.
         raise # Re-raise the exception to be potentially caught by the task runner
+
+def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
+    """Authenticate user credentials."""
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        logger.debug(f"Authentication failed: User '{username}' not found.")
+        return None
+    if not verify_password(password, user.hashed_password):
+        logger.debug(f"Authentication failed: Incorrect password for user '{username}'.")
+        return None
+    logger.info(f"User '{username}' authenticated successfully.")
+    return user
+
+async def get_sensor_data(
+    sensor_type: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    GET /sensors/{sensor_type} endpoint returns data from a specific sensor.
+    """
+    try:
+        # Extract base host/port from configured URL
+        pi_full_url = config["raspberry_pi"]["api_url"]
+        parsed_url = urlparse(pi_full_url)
+        pi_base_host = f"{parsed_url.scheme}://{parsed_url.netloc}/" # Ensure trailing slash
+        pi_key = config["raspberry_pi"]["api_key"]
+
+        if not pi_full_url:
+            logger.error("Raspberry Pi API URL is not configured.")
+            raise HTTPException(status_code=500, detail="Raspberry Pi API URL not configured on the server.")
+
+        # Pass only host:port to client
+        async with RaspberryPiClient(pi_base_host, pi_key) as client:
+            # Client methods now need to specify full path like /api/v1/sensors/...
+            sensor_data = await client.get_sensor_data(sensor_type)
+
+            # Log sensor data retrieval (Optional: Add logging here if needed)
+            logger.info(f"Successfully retrieved sensor data for '{sensor_type}' by user '{current_user.username}'.") # Example logging
+            return sensor_data # Return the data on success
+
+    except HTTPException as http_exc:
+        # Re-raise HTTPExceptions directly (e.g., the 500 error if URL not configured)
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Failed to get sensor data for '{sensor_type}' from Pi: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=503, # Service Unavailable
+            detail=f"Failed to retrieve data for sensor '{sensor_type}' from Raspberry Pi."
+        )

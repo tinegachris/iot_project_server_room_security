@@ -99,10 +99,17 @@ def rate_limit(requests: int = 100, window: int = 60):
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            # Search for Request object in both args and kwargs
             request = next((arg for arg in args if isinstance(arg, Request)), None)
             if not request:
+                request = next((val for val in kwargs.values() if isinstance(val, Request)), None)
+            
+            # If still not found, raise the error
+            if not request:
+                logger.error(f"Could not find Request object in args: {args} or kwargs: {kwargs} for function {func.__name__}")
                 raise ValueError("Request object not found in function arguments")
 
+            # Proceed with rate limiting check
             if not await rate_limiter.check_rate_limit(request):
                 raise HTTPException(
                     status_code=429,

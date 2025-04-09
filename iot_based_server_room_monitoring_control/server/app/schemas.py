@@ -30,6 +30,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    is_admin: bool = False
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
@@ -226,3 +227,18 @@ class MaintenanceLog(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- Add Token schema --- 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+# --- Add LogResponse model for pagination ---
+class LogResponse(BaseModel):
+    logs: List[LogEntry]
+    total: int
+    skip: int
+    limit: int
