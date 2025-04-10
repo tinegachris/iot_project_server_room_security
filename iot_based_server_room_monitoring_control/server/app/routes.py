@@ -183,7 +183,8 @@ async def post_control(
         # Validate command
         valid_actions = [
             "lock", "unlock", "restart_system", "test_sensors",
-            "capture_image", "record_video", "clear_logs", "update_firmware"
+            "capture_image", "record_video", "clear_logs", "update_firmware",
+            "lock_window", "unlock_window"
         ]
         if command.action not in valid_actions:
             raise HTTPException(

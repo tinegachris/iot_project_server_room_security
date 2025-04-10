@@ -70,7 +70,9 @@ def require_api_key(f):
 # --- Door Lock Control --- 
 # Assumes GPIO.LOW = Locked, GPIO.HIGH = Unlocked. Adjust if needed.
 DOOR_LOCK_PIN = int(os.getenv("DOOR_LOCK_PIN", "25")) 
+WINDOW_LOCK_PIN = int(os.getenv("WINDOW_LOCK_PIN", "24")) # Add window lock pin
 IS_GPIO_SETUP = False
+IS_WINDOW_GPIO_SETUP = False # Add separate flag for window
 
 def setup_door_lock():
     global IS_GPIO_SETUP
@@ -103,16 +105,53 @@ def setup_door_lock():
         logger.error(f"Failed to setup door lock GPIO {DOOR_LOCK_PIN}: {e}")
         IS_GPIO_SETUP = False
 
+def setup_window_lock():
+    global IS_WINDOW_GPIO_SETUP
+    if IS_WINDOW_GPIO_SETUP:
+        return
+
+    if not IS_RPI or not GPIO:
+        logger.warning("Not on RPi or GPIO unavailable. Skipping real window lock setup.")
+        IS_WINDOW_GPIO_SETUP = False
+        return
+
+    try:
+        # Assuming BCM mode is already set by door lock setup if run first
+        # If not, uncomment: GPIO.setmode(GPIO.BCM)
+        GPIO.setup(WINDOW_LOCK_PIN, GPIO.OUT)
+        GPIO.output(WINDOW_LOCK_PIN, GPIO.HIGH) # Default to unlocked
+        IS_WINDOW_GPIO_SETUP = True
+        logger.info(f"Window lock GPIO {WINDOW_LOCK_PIN} initialized. Initial state: UNLOCKED (HIGH)")
+        # Register cleanup if not already registered by door lock
+        if atexit and not IS_GPIO_SETUP: # Only register if door lock didn't
+            atexit.register(gpio_cleanup)
+    except RuntimeError as e:
+        logger.error(f"Could not set up GPIO for window lock (Pin {WINDOW_LOCK_PIN}): {e}. Might need root privileges or pin conflict.")
+        IS_WINDOW_GPIO_SETUP = False
+    except Exception as e:
+        logger.error(f"Failed to setup window lock GPIO {WINDOW_LOCK_PIN}: {e}")
+        IS_WINDOW_GPIO_SETUP = False
+
 def gpio_cleanup():
-    global IS_GPIO_SETUP
-    if IS_RPI and GPIO and IS_GPIO_SETUP:
-        logger.info("Cleaning up door lock GPIO...")
-        GPIO.cleanup(DOOR_LOCK_PIN)
-        IS_GPIO_SETUP = False
+    global IS_GPIO_SETUP, IS_WINDOW_GPIO_SETUP
+    pins_to_cleanup = []
+    if IS_RPI and GPIO:
+        if IS_GPIO_SETUP:
+            pins_to_cleanup.append(DOOR_LOCK_PIN)
+            IS_GPIO_SETUP = False
+        if IS_WINDOW_GPIO_SETUP:
+            pins_to_cleanup.append(WINDOW_LOCK_PIN)
+            IS_WINDOW_GPIO_SETUP = False
+        
+        if pins_to_cleanup:
+            logger.info(f"Cleaning up GPIO pins: {pins_to_cleanup}...")
+            GPIO.cleanup(pins_to_cleanup)
+        else:
+             logger.debug("GPIO cleanup called, but no pins were marked as setup.")
     elif not IS_RPI or not GPIO:
          logger.debug("Not on RPi or GPIO unavailable. Skipping real GPIO cleanup.")
-         IS_GPIO_SETUP = False # Ensure state is consistent
-    # else: IS_RPI is true but setup failed or was already cleaned up
+         IS_GPIO_SETUP = False # Ensure states are consistent
+         IS_WINDOW_GPIO_SETUP = False
 
 def lock_door():
     if not IS_RPI or not GPIO:
@@ -160,6 +199,50 @@ def unlock_door():
         logger.error(f"Failed to unlock door (GPIO {DOOR_LOCK_PIN}): {e}")
         return {"status": "error", "message": str(e)}
 
+# --- Add Window Lock Functions ---
+def lock_window():
+    if not IS_RPI or not GPIO:
+        logger.warning("Mock lock_window: Not on RPi or GPIO unavailable.")
+        return {"status": "success", "window_locked": True, "mock": True}
+
+    if not IS_WINDOW_GPIO_SETUP:
+        logger.error("Cannot lock window: GPIO not initialized properly.")
+        return {"status": "error", "message": "Window GPIO not initialized"}
+    try:
+        GPIO.output(WINDOW_LOCK_PIN, GPIO.LOW) # Set pin LOW to lock
+        logger.info(f"Window LOCKED (GPIO {WINDOW_LOCK_PIN} set LOW)")
+        # Update sensor manager status if possible (assuming window sensor handles 'locked' state)
+        if sensor_manager:
+             try:
+                 sensor_manager._update_sensor_status('window', True, data={'locked': True})
+             except AttributeError:
+                 logger.warning("sensor_manager does not have _update_sensor_status or window sensor doesn't support 'locked' data")
+        return {"status": "success", "window_locked": True}
+    except Exception as e:
+        logger.error(f"Failed to lock window (GPIO {WINDOW_LOCK_PIN}): {e}")
+        return {"status": "error", "message": str(e)}
+
+def unlock_window():
+    if not IS_RPI or not GPIO:
+        logger.warning("Mock unlock_window: Not on RPi or GPIO unavailable.")
+        return {"status": "success", "window_locked": False, "mock": True}
+
+    if not IS_WINDOW_GPIO_SETUP:
+        logger.error("Cannot unlock window: GPIO not initialized properly.")
+        return {"status": "error", "message": "Window GPIO not initialized"}
+    try:
+        GPIO.output(WINDOW_LOCK_PIN, GPIO.HIGH) # Set pin HIGH to unlock
+        logger.info(f"Window UNLOCKED (GPIO {WINDOW_LOCK_PIN} set HIGH)")
+        if sensor_manager:
+             try:
+                 sensor_manager._update_sensor_status('window', True, data={'locked': False})
+             except AttributeError:
+                 logger.warning("sensor_manager does not have _update_sensor_status or window sensor doesn't support 'locked' data")
+        return {"status": "success", "window_locked": False}
+    except Exception as e:
+        logger.error(f"Failed to unlock window (GPIO {WINDOW_LOCK_PIN}): {e}")
+        return {"status": "error", "message": str(e)}
+
 # --- Helper Functions ---
 def get_storage_status():
     total, used, free = shutil.disk_usage("/")
@@ -202,6 +285,7 @@ def create_pi_api_server(sm, cm):
 
     # Setup hardware (like door lock) before starting server
     setup_door_lock()
+    setup_window_lock() # Setup window lock too
 
     app = Flask(__name__)
     app.config['PRESERVE_CONTEXT_ON_EXCEPTION'] = False # Good practice for Flask
@@ -381,6 +465,10 @@ def create_pi_api_server(sm, cm):
                 result = lock_door()
             elif action == "unlock":
                 result = unlock_door()
+            elif action == "lock_window": # Add window lock action
+                result = lock_window()
+            elif action == "unlock_window": # Add window unlock action
+                result = unlock_window()
             elif action == "capture_image":
                 if not camera_manager: raise InternalServerError("CameraManager not initialized")
                 image_path, image_url = camera_manager.capture_image()
@@ -471,7 +559,10 @@ if __name__ == '__main__':
     print("Starting Flask server directly for testing (Do not use in production)...")
     # Create dummy managers for testing if run directly
     class DummyManager:
-        def get_sensor_status(self): return {"dummy_sensor": {"is_active": True}}
+        def get_sensor_status(self): return {
+             "dummy_sensor": {"is_active": True},
+             "window": {"is_active": True, "data": {"locked": False}} # Mock window status
+         }
         def get_status(self): return {"dummy_cam": {"is_active": True}}
         def capture_image(self): return "/path/dummy.jpg", "http://dummy/dummy.jpg"
         def record_video(self, duration): return f"/path/dummy_{duration}s.mp4", f"http://dummy/dummy_{duration}s.mp4"
