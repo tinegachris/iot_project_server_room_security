@@ -32,6 +32,14 @@ class UserCreate(UserBase):
     password: str
     is_admin: bool = False
 
+# --- Add Schema for Public Registration ---
+class PublicUserCreate(BaseModel):
+    username: str 
+    email: EmailStr
+    password: str
+    # Add name if you want it during registration
+    # name: Optional[str] = None 
+
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None

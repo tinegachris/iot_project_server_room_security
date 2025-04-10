@@ -20,10 +20,12 @@ from .schemas import (
     Severity,
     LogResponse,
     UserCreate,
+    PublicUserCreate,
+    UserUpdate,
     User as UserSchema
 )
 from .rate_limit import rate_limit
-from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user
+from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user, get_password_hash
 from ..config.config import config
 from .raspberry_pi_client import RaspberryPiClient
 
@@ -571,4 +573,149 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create user"
+        )
+
+@router.put("/users/{user_id}", response_model=UserSchema)
+async def update_user(
+    user_id: int,
+    user_data: UserUpdate, # Use the UserUpdate schema for partial updates
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    PUT /users/{user_id} endpoint to update a user's details.
+    Requires Admin privileges.
+    """
+    # Check if the current user is an admin
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to update users"
+        )
+
+    # Fetch the user to update
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Update fields based on provided data (excluding unset fields)
+    update_data = user_data.model_dump(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        if key == "password":
+            # Hash the password if it's being updated
+            if value: # Ensure password is not empty
+                hashed_password = get_password_hash(value)
+                setattr(db_user, "hashed_password", hashed_password)
+        elif hasattr(db_user, key):
+            setattr(db_user, key, value)
+        else:
+            logger.warning(f"Attempted to update non-existent field '{key}' for user {user_id}")
+
+    try:
+        db.commit()
+        db.refresh(db_user)
+        logger.info(f"User {user_id} ('{db_user.username}') updated by admin '{current_user.username}'.")
+        return db_user
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user"
+        )
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    DELETE /users/{user_id} endpoint to delete a user.
+    Requires Admin privileges.
+    """
+    # Prevent admin from deleting themselves
+    if current_user.id == user_id:
+         raise HTTPException(
+             status_code=status.HTTP_403_FORBIDDEN,
+             detail="Admin users cannot delete themselves"
+         )
+         
+    # Check if the current user is an admin
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to delete users"
+        )
+
+    # Fetch the user to delete
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    try:
+        username = db_user.username # Get username for logging before deleting
+        db.delete(db_user)
+        db.commit()
+        logger.info(f"User {user_id} ('{username}') deleted by admin '{current_user.username}'.")
+        # No content to return for DELETE
+        return None # Return None for 204 response
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting user {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete user"
+        )
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register_new_user(
+    user_data: PublicUserCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint for users to self-register.
+    Creates a user with default non-admin privileges.
+    """
+    try:
+        # Check if username or email already exists
+        existing_user = db.query(User).filter(
+            (User.username == user_data.username) | (User.email == user_data.email)
+        ).first()
+        if existing_user:
+            detail = ""
+            if existing_user.username == user_data.username:
+                detail = f"Username '{user_data.username}' is already registered."
+            if existing_user.email == user_data.email:
+                detail += f" Email '{user_data.email}' is already registered."
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=detail.strip()
+            )
+            
+        # Create the new user with default (non-admin) privileges
+        new_user = auth_create_user(
+            db=db,
+            username=user_data.username,
+            password=user_data.password,
+            email=user_data.email,
+            is_admin=False # Explicitly false for public registration
+            # Role will use the default from models.User ('User')
+        )
+
+        logger.info(f"New user registered: '{new_user.username}'.")
+
+        return {
+            "message": "User registered successfully. You can now log in.",
+            "user_id": new_user.id,
+            "username": new_user.username
+        }
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Error during public registration: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to register user due to an internal error."
         )
