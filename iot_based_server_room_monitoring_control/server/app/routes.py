@@ -507,6 +507,34 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
     # You might need a specific UserRead schema if you want to exclude fields like password hash.
     return current_user
 
+@router.get("/users", response_model=List[UserSchema])
+async def read_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    GET /users endpoint returns a list of all users.
+    Requires Admin privileges.
+    """
+    # Check if the current user is an admin
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to view all users"
+        )
+    
+    try:
+        users = db.query(User).all()
+        # FastAPI will automatically convert these User model instances 
+        # to UserSchema instances based on the response_model
+        return users
+    except Exception as e:
+        logger.error(f"Error retrieving users: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve users"
+        )
+
 @router.post("/users", status_code=status.HTTP_201_CREATED)
 async def create_user(
     request: Request,
