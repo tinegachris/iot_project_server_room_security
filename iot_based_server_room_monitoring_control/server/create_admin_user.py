@@ -51,7 +51,8 @@ def create_admin():
             hashed_password=hashed_password,
             email=ADMIN_EMAIL,
             is_active=True,
-            is_admin=True # Make this user an admin
+            is_admin=True, # Make this user an admin
+            role='Admin' # Explicitly set the role string
         )
         db.add(admin_user)
         db.commit()

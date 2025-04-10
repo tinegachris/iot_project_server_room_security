@@ -17,10 +17,10 @@ class AlertSeverity(str, Enum):
     CRITICAL = "critical"
 
 class UserRole(str, Enum):
-    ADMIN = "admin"
-    IT_STAFF = "IT staff"
-    MAINTENANCE = "maintenance"
-    USER = "user"
+    ADMIN = "Admin"
+    SECURITY = "Security"
+    STAFF = "Staff"
+    USER = "User"
 
 class UserBase(BaseModel):
     username: str

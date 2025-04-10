@@ -16,7 +16,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime)
-    role = Column(String(20), default="user")  # admin, IT staff, maintenance
+    role = Column(String(20), default="User")  # Admin, Security, Staff, User
     is_active = Column(Boolean, default=True)
     last_activity = Column(DateTime)
 
