@@ -21,8 +21,6 @@ load_dotenv()
 
 # Security configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
-# Log the loaded SECRET_KEY to verify
-logger.info(f"Loaded SECRET_KEY: '{SECRET_KEY[:5]}...{SECRET_KEY[-5:]}'" if SECRET_KEY else "SECRET_KEY not loaded!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
