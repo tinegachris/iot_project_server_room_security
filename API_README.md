@@ -76,7 +76,7 @@
 To authenticate and obtain a token, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/token" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/token" \
      -H "Content-Type: application/x-www-form-urlencoded" \
      -d "username=admin&password=admin123"
 ```
@@ -95,7 +95,7 @@ Authorization: Bearer <access_token>
 To check the server room status, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/status" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/api/v1/status" \
      -H "Authorization: Bearer <access_token>"
 ```
 
@@ -129,7 +129,7 @@ Example response:
 To send a control command to the Raspberry Pi, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/control" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
      -d '{"action": "lock"}'
@@ -155,7 +155,7 @@ Example response:
 To send an unlock command for the window to the Raspberry Pi, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/control" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
      -d '{"action": "unlock", "parameters": {"target": "window"}}'
@@ -182,7 +182,7 @@ Example response:
 To capture an image using the Raspberry Pi, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/control" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
      -d '{"action": "capture_image"}'
@@ -208,7 +208,7 @@ Example response:
 To retrieve the 10 most recent log entries, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/logs?limit=10" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/api/v1/logs?limit=10" \
      -H "Authorization: Bearer <access_token>"
 ```
 
@@ -239,7 +239,7 @@ Example response:
 To retrieve data for the 'door' sensor, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/sensors/door" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/api/v1/sensors/door" \
      -H "Authorization: Bearer <access_token>"
 ```
 
@@ -268,7 +268,7 @@ Example response:
 To retrieve data for the 'window' sensor, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/sensors/window" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/api/v1/sensors/window" \
      -H "Authorization: Bearer <access_token>"
 ```
 
@@ -297,7 +297,7 @@ Example response:
 To record a video using the Raspberry Pi, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/control" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
      -d '{"action": "record_video", "parameters": {"duration": 10}}'
@@ -326,7 +326,7 @@ Example response:
 To add a new user, use the following `curl` command (requires admin privileges):
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/users" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/users" \
      -H "Authorization: Bearer <admin_access_token>" \
      -H "Content-Type: application/json" \
      -d '{"username": "user1", "password": "user123", "email": "user1@example.com", "is_admin": false}'
@@ -350,7 +350,7 @@ Example response:
 To send an alert, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/alert" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/alert" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
      -d '{"message": "Test alert message", "video_url": "http://example.com/video.mp4"}'
@@ -374,7 +374,7 @@ Example response:
 To test the sensors, use the following `curl` command:
 
 ```bash
-curl -X POST "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/control" \
+curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
      -d '{"action": "test_sensors"}'
@@ -428,7 +428,7 @@ Example response:
 To check the health status of the server, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/health" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/health" \
      -H "Authorization: Bearer <access_token>"
 ```
 
@@ -450,7 +450,7 @@ Example response:
 To retrieve events from the door sensor, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/sensors/door/events" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/api/v1/sensors/door/events" \
      -H "Authorization: Bearer <access_token>"
 ```
 
@@ -468,7 +468,7 @@ Example response:
 To retrieve statistics for the door sensor, use the following `curl` command:
 
 ```bash
-curl -X GET "https://bf5a-196-207-133-221.ngrok-free.app/api/v1/sensors/door/stats" \
+curl -X GET "https://134c-196-207-133-221.ngrok-free.app/api/v1/sensors/door/stats" \
      -H "Authorization: Bearer <access_token>"
 ```
 
