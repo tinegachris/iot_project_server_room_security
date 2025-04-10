@@ -3,9 +3,13 @@ import os
 import sys
 import logging
 
-# Add the project root to the Python path to allow imports from 'app'
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+# Add the directory *containing* the 'iot_based_server_room_monitoring_control' package to sys.path
+# This allows imports like 'from iot_based_server_room_monitoring_control...'
+script_dir = os.path.dirname(os.path.abspath(__file__)) # .../server
+project_dir = os.path.dirname(script_dir) # .../iot_based_server_room_monitoring_control
+workspace_root = os.path.dirname(project_dir) # /home/admin/iot_project_server_room_security
+if workspace_root not in sys.path:
+    sys.path.insert(0, workspace_root)
 
 # Now import necessary components from the server app
 # It's important that these imports happen *after* modifying sys.path
@@ -16,9 +20,9 @@ try:
     from dotenv import load_dotenv
 except ImportError as e:
     print(f"Error importing server modules: {e}")
-    print("Please ensure you run this script from the project root directory")
+    print("Please ensure you run this script from a location where Python can find the 'iot_based_server_room_monitoring_control' package.")
     print(f"Current working directory: {os.getcwd()}")
-    print(f"Project root added to path: {project_root}")
+    print(f"sys.path includes: {sys.path}") # Added for debugging
     sys.exit(1)
 
 # Configure basic logging for the script
@@ -26,7 +30,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables (might be needed for database connection string etc.)
-load_dotenv(os.path.join(project_root, '.env'))
+# Assuming .env is in workspace_root
+env_path = os.path.join(workspace_root, '.env')
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path)
+    logger.info(f"Loaded environment variables from {env_path}")
+else:
+    # Look for .env in the original project_root as well, just in case
+    original_project_root_env_path = os.path.join(project_dir, '.env')
+    if os.path.exists(original_project_root_env_path):
+        load_dotenv(dotenv_path=original_project_root_env_path)
+        logger.info(f"Loaded environment variables from {original_project_root_env_path}")
+    else:
+        logger.warning(f".env file not found at {env_path} or {original_project_root_env_path}")
 
 # --- User Details ---
 ADMIN_USERNAME = "admin"
