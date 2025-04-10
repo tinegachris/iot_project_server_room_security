@@ -19,7 +19,8 @@ from .schemas import (
     Token,
     Severity,
     LogResponse,
-    UserCreate
+    UserCreate,
+    User as UserSchema
 )
 from .rate_limit import rate_limit
 from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user
@@ -489,11 +490,22 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     # Use dictionary access for config value with a default
-    access_token_expires = timedelta(minutes=config.get("ACCESS_TOKEN_EXPIRE_MINUTES", 30)) 
+    access_token_expires = timedelta(minutes=config.get("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/users/me", response_model=UserSchema)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """
+    Get current logged-in user details.
+    """
+    # The get_current_user dependency already fetches the user object from the DB
+    # based on the token. We just need to return it.
+    # Note: Ensure your schemas.User includes all necessary fields (id, username, email, name, role).
+    # You might need a specific UserRead schema if you want to exclude fields like password hash.
+    return current_user
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
 async def create_user(
