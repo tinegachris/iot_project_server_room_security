@@ -1,40 +1,40 @@
 import os
 import logging
 import json
-import platform
+import platform # Import platform directly
 from functools import wraps
-from typing import Optional, Dict, Any, Callable, TypeVar, cast
 from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException, Unauthorized, Forbidden, BadRequest, InternalServerError, NotFound
 from dotenv import load_dotenv
 
 # Platform check
 IS_RPI = platform.machine().startswith(('arm', 'aarch64'))
-logger = logging.getLogger(__name__ + ".platform_check")
+logger = logging.getLogger(__name__ + ".platform_check") # Use a specific logger
+if not IS_RPI:
+    logger.warning("Platform check: Not running on Raspberry Pi/ARM. Hardware features will be mocked.")
+else:
+    logger.info("Platform check: Running on Raspberry Pi/ARM.")
 
-# Type hints for GPIO and atexit
-GPIO: Optional[Any] = None
-atexit: Optional[Any] = None
-
+# Conditionally import RPi.GPIO
+GPIO = None
+atexit = None
 if IS_RPI:
     try:
-        import RPi.GPIO as GPIO  # type: ignore
-        import atexit  # type: ignore
+        import RPi.GPIO as GPIO # ✅ Import GPIO library
+        import atexit # ✅ To ensure GPIO cleanup
         logger.info("RPi.GPIO imported successfully.")
     except (RuntimeError, ModuleNotFoundError) as e:
         logger.warning(f"Failed to import RPi.GPIO: {e}. GPIO functionality will be disabled.")
-        GPIO = None
+        GPIO = None # Ensure GPIO is None if import fails
         atexit = None
 else:
-    logger.warning("Platform check: Not running on Raspberry Pi/ARM. Hardware features will be mocked.")
+    # Warning is already logged above
+    pass
 
-import subprocess
-import shutil
-import psutil
-from datetime import datetime
-
-# Type variable for decorator
-F = TypeVar('F', bound=Callable[..., Any])
+import subprocess # ✅ Import subprocess for restart
+import shutil # For storage check
+import psutil # For network check
+from datetime import datetime # Added datetime
 
 # Import necessary components from other firmware modules
 # (Assuming SensorManager and CameraManager will be passed in)
@@ -54,20 +54,18 @@ camera_manager = None
 # --- Authentication ---
 EXPECTED_API_KEY = os.getenv("RASPBERRY_PI_API_KEY")
 
-def require_api_key(f: F) -> F:
+def require_api_key(f):
     @wraps(f)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+    def decorated_function(*args, **kwargs):
         api_key = request.headers.get('X-API-Key')
-        if not api_key:
-            logger.warning("API key missing in request")
-            raise Unauthorized("API key is required")
-
-        if api_key != os.getenv('API_KEY'):
-            logger.warning("Invalid API key provided")
-            raise Unauthorized("Invalid API key")
-
+        if not EXPECTED_API_KEY:
+            logger.critical("API Key not configured on the Pi! Set RASPBERRY_PI_API_KEY.")
+            raise InternalServerError("API Key not configured on server.")
+        if not api_key or api_key != EXPECTED_API_KEY:
+            logger.warning(f"Unauthorized API access attempt. Provided key: {api_key}")
+            raise Unauthorized("Invalid or missing API Key")
         return f(*args, **kwargs)
-    return cast(F, decorated_function)
+    return decorated_function
 
 # --- Door Lock Control ---
 # Assumes GPIO.LOW = Locked, GPIO.HIGH = Unlocked. Adjust if needed.
@@ -76,50 +74,84 @@ WINDOW_LOCK_PIN = int(os.getenv("WINDOW_LOCK_PIN", "24")) # Add window lock pin
 IS_GPIO_SETUP = False
 IS_WINDOW_GPIO_SETUP = False # Add separate flag for window
 
-def setup_door_lock() -> None:
-    """Setup GPIO for door lock control."""
-    if not IS_RPI or GPIO is None:
-        logger.warning("GPIO not available, door lock setup skipped")
+def setup_door_lock():
+    global IS_GPIO_SETUP
+    if IS_GPIO_SETUP:
+        return # Already setup
+
+    if not IS_RPI or not GPIO:
+        logger.warning("Not on RPi or GPIO unavailable. Skipping real door lock setup.")
+        IS_GPIO_SETUP = False # Explicitly set to false for clarity
         return
 
+    # Proceed with real GPIO setup only if on RPi and GPIO is available
     try:
-        GPIO.setmode(GPIO.BCM)
+        GPIO.setmode(GPIO.BCM) # Use Broadcom pin numbering
         GPIO.setup(DOOR_LOCK_PIN, GPIO.OUT)
-        GPIO.output(DOOR_LOCK_PIN, GPIO.LOW)  # Start unlocked
-        logger.info("Door lock GPIO setup completed")
+        # Set initial state to unlocked (HIGH)
+        GPIO.output(DOOR_LOCK_PIN, GPIO.HIGH)
+        IS_GPIO_SETUP = True
+        logger.info(f"Door lock GPIO {DOOR_LOCK_PIN} initialized. Initial state: UNLOCKED (HIGH)")
+        # Register cleanup function to run on exit
+        if atexit:
+            atexit.register(gpio_cleanup)
+        else:
+             logger.warning("atexit module not available, GPIO cleanup might not run on exit.")
+    except RuntimeError as e:
+        # Handle cases where GPIO might already be in use or setup fails
+        logger.error(f"Could not set up GPIO for door lock (Pin {DOOR_LOCK_PIN}): {e}. Might need root privileges or pin conflict.")
+        IS_GPIO_SETUP = False
     except Exception as e:
-        logger.error(f"Failed to setup door lock GPIO: {e}")
-        raise InternalServerError("Failed to initialize door lock hardware")
+        logger.error(f"Failed to setup door lock GPIO {DOOR_LOCK_PIN}: {e}")
+        IS_GPIO_SETUP = False
 
-def setup_window_lock() -> None:
-    """Setup GPIO for window lock control."""
-    if not IS_RPI or GPIO is None:
-        logger.warning("GPIO not available, window lock setup skipped")
+def setup_window_lock():
+    global IS_WINDOW_GPIO_SETUP
+    if IS_WINDOW_GPIO_SETUP:
+        return
+
+    if not IS_RPI or not GPIO:
+        logger.warning("Not on RPi or GPIO unavailable. Skipping real window lock setup.")
+        IS_WINDOW_GPIO_SETUP = False
         return
 
     try:
-        GPIO.setmode(GPIO.BCM)
+        # Assuming BCM mode is already set by door lock setup if run first
+        # If not, uncomment: GPIO.setmode(GPIO.BCM)
         GPIO.setup(WINDOW_LOCK_PIN, GPIO.OUT)
-        GPIO.output(WINDOW_LOCK_PIN, GPIO.LOW)  # Start unlocked
-        logger.info("Window lock GPIO setup completed")
+        GPIO.output(WINDOW_LOCK_PIN, GPIO.HIGH) # Default to unlocked
+        IS_WINDOW_GPIO_SETUP = True
+        logger.info(f"Window lock GPIO {WINDOW_LOCK_PIN} initialized. Initial state: UNLOCKED (HIGH)")
+        # Register cleanup if not already registered by door lock
+        if atexit and not IS_GPIO_SETUP: # Only register if door lock didn't
+            atexit.register(gpio_cleanup)
+    except RuntimeError as e:
+        logger.error(f"Could not set up GPIO for window lock (Pin {WINDOW_LOCK_PIN}): {e}. Might need root privileges or pin conflict.")
+        IS_WINDOW_GPIO_SETUP = False
     except Exception as e:
-        logger.error(f"Failed to setup window lock GPIO: {e}")
-        raise InternalServerError("Failed to initialize window lock hardware")
+        logger.error(f"Failed to setup window lock GPIO {WINDOW_LOCK_PIN}: {e}")
+        IS_WINDOW_GPIO_SETUP = False
 
-def gpio_cleanup() -> None:
-    """Cleanup GPIO resources."""
-    if not IS_RPI or GPIO is None:
-        return
-
-    try:
-        GPIO.cleanup()
-        logger.info("GPIO cleanup completed")
-    except Exception as e:
-        logger.error(f"Error during GPIO cleanup: {e}")
-
-# Register cleanup with atexit if available
-if atexit is not None:
-    atexit.register(gpio_cleanup)
+def gpio_cleanup():
+    global IS_GPIO_SETUP, IS_WINDOW_GPIO_SETUP
+    pins_to_cleanup = []
+    if IS_RPI and GPIO:
+        if IS_GPIO_SETUP:
+            pins_to_cleanup.append(DOOR_LOCK_PIN)
+            IS_GPIO_SETUP = False
+        if IS_WINDOW_GPIO_SETUP:
+            pins_to_cleanup.append(WINDOW_LOCK_PIN)
+            IS_WINDOW_GPIO_SETUP = False
+        
+        if pins_to_cleanup:
+            logger.info(f"Cleaning up GPIO pins: {pins_to_cleanup}...")
+            GPIO.cleanup(pins_to_cleanup)
+        else:
+             logger.debug("GPIO cleanup called, but no pins were marked as setup.")
+    elif not IS_RPI or not GPIO:
+         logger.debug("Not on RPi or GPIO unavailable. Skipping real GPIO cleanup.")
+         IS_GPIO_SETUP = False # Ensure states are consistent
+         IS_WINDOW_GPIO_SETUP = False
 
 def lock_door():
     if not IS_RPI or not GPIO:
