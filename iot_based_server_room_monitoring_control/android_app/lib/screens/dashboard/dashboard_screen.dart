@@ -6,6 +6,7 @@ import 'dashboardviews/home_screen.dart';
 import 'dashboardviews/logs_screen.dart';
 import 'dashboardviews/manage_users.dart';
 import 'dashboardviews/notifications_screen.dart';
+import '../../screens/settings_page.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String role;
@@ -124,21 +125,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         LogsScreen(),
         const NotificationsScreen(),
         const ManageUsersScreen(),
+        const SettingsPage(),
       ];
     } else if (role == 'Security') {
        return [
          const HomeScreen(),
-         const ControlsScreen(), // Security might need controls
+         const ControlsScreen(),
          LogsScreen(),
          const NotificationsScreen(),
        ];
-    } else { // Default role (e.g., 'Staff', 'User')
+    } else {
        return [
          ...commonScreens,
-         LogsScreen(), // Add Logs screen for default users
+         LogsScreen(),
        ];
     }
-    // Add other roles as needed
   }
 
   // Helper to get navigation items based on role
@@ -151,12 +152,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
        items.insert(1, const BottomNavigationBarItem(icon: Icon(Icons.toggle_on_outlined), activeIcon: Icon(Icons.toggle_on), label: 'Controls'));
        items.insert(2, const BottomNavigationBarItem(icon: Icon(Icons.history_outlined), activeIcon: Icon(Icons.history), label: 'Logs'));
        items.add(const BottomNavigationBarItem(icon: Icon(Icons.people_outline), activeIcon: Icon(Icons.people), label: 'Users'));
+       items.add(const BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'));
      } else if (role == 'Security') {
        items.insert(1, const BottomNavigationBarItem(icon: Icon(Icons.toggle_on_outlined), activeIcon: Icon(Icons.toggle_on), label: 'Controls'));
        items.insert(2, const BottomNavigationBarItem(icon: Icon(Icons.history_outlined), activeIcon: Icon(Icons.history), label: 'Logs'));
      }
-     // Add other roles
-     else { // Default role (e.g., 'Staff', 'User')
+     else {
         items.insert(1, const BottomNavigationBarItem(icon: Icon(Icons.history_outlined), activeIcon: Icon(Icons.history), label: 'Logs'));
      }
      return items;
