@@ -40,8 +40,9 @@ dependencies:
   provider: ^6.1.4
   http: ^1.2.1
   flutter_secure_storage: ^9.2.2
-  intl: ^0.17.0
+  intl: ^0.20.2
   url_launcher: ^6.1.11
+  logging: ^1.2.0
 
 dev_dependencies:
   flutter_test:

@@ -1,8 +1,12 @@
+import 'package:logging/logging.dart';
+
 // Add necessary import
 
 // Removed generator comments
 
 class SensorStatus {
+  static final Logger _logger = Logger('SensorStatus');
+
   final String name;
   final bool isActive;
   final DateTime lastCheck;
@@ -33,8 +37,8 @@ class SensorStatus {
       return SensorStatus(
         name: json['name'] as String? ?? 'unknown',
         isActive: json['is_active'] as bool? ?? false,  // API returns 'is_active', not 'isActive'
-        lastCheck: json['last_check'] != null 
-            ? DateTime.parse(json['last_check'] as String) 
+        lastCheck: json['last_check'] != null
+            ? DateTime.parse(json['last_check'] as String)
             : DateTime.now(),
         error: json['error'] as String?,
         data: json['data'] as Map<String, dynamic>?,
@@ -45,25 +49,15 @@ class SensorStatus {
         eventCount: json['event_count'] as int? ?? 0,
       );
     } catch (e) {
-      print("Error parsing SensorStatus: $e");
-      // Return a default sensor with error state
-      return SensorStatus(
-        name: json['name'] as String? ?? 'unknown',
-        isActive: false,
-        lastCheck: DateTime.now(),
-        error: 'Error parsing sensor data: $e',
-        data: null,
-        location: null,
-        type: null,
-        firmwareVersion: null,
-        lastEvent: null,
-        eventCount: 0,
-      );
+      _logger.warning("Error parsing SensorStatus: $e");
+      rethrow;
     }
   }
 }
 
 class RaspberryPiStatus {
+  static final Logger _logger = Logger('RaspberryPiStatus');
+
   final bool isOnline;
   final DateTime lastHeartbeat;
   final String firmwareVersion;
@@ -83,29 +77,25 @@ class RaspberryPiStatus {
     try {
       return RaspberryPiStatus(
         isOnline: json['is_online'] as bool? ?? false,
-        lastHeartbeat: json['last_heartbeat'] != null 
+        lastHeartbeat: json['last_heartbeat'] != null
             ? DateTime.parse(json['last_heartbeat'] as String)
             : DateTime.now(),
         firmwareVersion: json['firmware_version'] as String? ?? 'unknown',
-        sensorTypes: json['sensor_types'] != null 
+        sensorTypes: json['sensor_types'] != null
             ? (json['sensor_types'] as List<dynamic>).cast<String>()
             : <String>[],
         totalEvents: json['total_events'] as int? ?? 0,
       );
     } catch (e) {
-      print("Error parsing RaspberryPiStatus: $e");
-      return RaspberryPiStatus(
-        isOnline: false,
-        lastHeartbeat: DateTime.now(),
-        firmwareVersion: 'error',
-        sensorTypes: <String>[],
-        totalEvents: 0,
-      );
+      _logger.warning("Error parsing RaspberryPiStatus: $e");
+      rethrow;
     }
   }
 }
 
 class SystemStatus {
+  static final Logger _logger = Logger('SystemStatus');
+
   final String status;
   final Map<String, SensorStatus> sensors;
   final Map<String, dynamic> storage; // Keeping storage as dynamic map for now
@@ -130,30 +120,29 @@ class SystemStatus {
 
   // Manual fromJson implementation
   factory SystemStatus.fromJson(Map<String, dynamic> json) {
+    _logger.info("Parsing SystemStatus from JSON: ${json.keys}");
     try {
-      print("Parsing SystemStatus from JSON: ${json.keys}");
-      
-      // Handle the case where sensors might be null or not a map
+      // Parse sensors
       Map<String, SensorStatus> sensorsMap = {};
-      if (json['sensors'] is Map<String, dynamic>) {
-        try {
+      try {
+        if (json['sensors'] is Map<String, dynamic>) {
           sensorsMap = (json['sensors'] as Map<String, dynamic>).map(
             (key, value) => MapEntry(key, SensorStatus.fromJson(value as Map<String, dynamic>)),
           );
-        } catch (e) {
-          print("Error parsing sensors: $e");
+        } else {
+          _logger.warning("Sensors is not a map or is null: ${json['sensors']}");
         }
-      } else {
-        print("Sensors is not a map or is null: ${json['sensors']}");
+      } catch (e) {
+        _logger.warning("Error parsing sensors: $e");
       }
-      
-      // Handle the case where raspberry_pi might be null or not a map
+
+      // Parse raspberry_pi
       RaspberryPiStatus piStatus;
-      if (json['raspberry_pi'] is Map<String, dynamic>) {
-        try {
+      try {
+        if (json['raspberry_pi'] is Map<String, dynamic>) {
           piStatus = RaspberryPiStatus.fromJson(json['raspberry_pi'] as Map<String, dynamic>);
-        } catch (e) {
-          print("Error parsing raspberry_pi: $e");
+        } else {
+          _logger.warning("raspberry_pi is not a map or is null: ${json['raspberry_pi']}");
           piStatus = RaspberryPiStatus(
             isOnline: false,
             lastHeartbeat: DateTime.now(),
@@ -162,8 +151,8 @@ class SystemStatus {
             totalEvents: 0
           );
         }
-      } else {
-        print("raspberry_pi is not a map or is null: ${json['raspberry_pi']}");
+      } catch (e) {
+        _logger.warning("Error parsing raspberry_pi: $e");
         piStatus = RaspberryPiStatus(
           isOnline: false,
           lastHeartbeat: DateTime.now(),
@@ -172,7 +161,7 @@ class SystemStatus {
           totalEvents: 0
         );
       }
-      
+
       return SystemStatus(
         status: json['status'] as String? ?? 'unknown',
         sensors: sensorsMap,
@@ -185,23 +174,8 @@ class SystemStatus {
         message: json['message'] as String?,
       );
     } catch (e) {
-      print("Error creating SystemStatus from JSON: $e");
-      // Return a default/fallback status
-      return SystemStatus(
-        status: 'error',
-        sensors: {},
-        storage: {'total_gb': 0, 'used_gb': 0, 'free_gb': 0, 'low_space': false},
-        uptime: 'unknown',
-        errors: ['Failed to parse system status: $e'],
-        raspberryPi: RaspberryPiStatus(
-          isOnline: false,
-          lastHeartbeat: DateTime.now(),
-          firmwareVersion: "unknown",
-          sensorTypes: [],
-          totalEvents: 0
-        ),
-        message: "Failed to parse system status",
-      );
+      _logger.severe("Error creating SystemStatus from JSON: $e");
+      rethrow;
     }
   }
 

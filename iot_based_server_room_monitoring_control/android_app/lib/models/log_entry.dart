@@ -1,4 +1,8 @@
+import 'package:logging/logging.dart';
+
 class LogEntry {
+  static final Logger _logger = Logger('LogEntry');
+
   final int id;
   final String eventType;
   final DateTime timestamp;
@@ -21,8 +25,8 @@ class LogEntry {
 
   // Manual fromJson based on the example log in AppState
   factory LogEntry.fromJson(Map<String, dynamic> json) {
+    _logger.info("Parsing LogEntry: ${json.keys}");
     try {
-      print("Parsing LogEntry: ${json.keys}");
       return LogEntry(
         id: json['id'] as int? ?? -1,
         eventType: json['event_type'] as String? ?? 'unknown',
@@ -36,18 +40,8 @@ class LogEntry {
         source: json['source'] as String? ?? 'unknown', // Default source if missing
       );
     } catch (e) {
-      print("Error parsing LogEntry: $e, JSON: $json");
-      // Return a fallback log entry
-      return LogEntry(
-        id: -1,
-        eventType: 'parse_error',
-        timestamp: DateTime.now(),
-        details: {'error': 'Failed to parse log entry: $e', 'original_json': json},
-        userId: null,
-        videoUrl: null,
-        severity: 'error',
-        source: 'app',
-      );
+      _logger.warning("Error parsing LogEntry: $e, JSON: $json");
+      rethrow;
     }
   }
 
@@ -64,4 +58,4 @@ class LogEntry {
       'source': source,
     };
   }
-} 
+}

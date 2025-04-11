@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // For date formatting
 import 'package:provider/provider.dart';
-import 'dart:convert'; // For jsonEncode
 import 'package:url_launcher/url_launcher.dart'; // Import url_launcher
 import '../../../providers/app_state.dart'; // Adjusted import path
-import '../../../models/LogEntry.dart'; // ✅ Import LogEntry model
+import '../../../models/log_entry.dart'; // Import LogEntry model
+import 'package:logging/logging.dart';
 
 class LogsScreen extends StatelessWidget {
+  static final Logger _logger = Logger('LogsScreen');
+
   LogsScreen({super.key});
 
   // Date formatter
@@ -15,15 +17,15 @@ class LogsScreen extends StatelessWidget {
   Color _severityColor(String severity) {
     switch (severity.toLowerCase()) { // Use toLowerCase for safety
       case 'critical':
-        return Colors.red[700]!;
+        return Colors.red[700] ?? Colors.red;
       case 'error':
         return Colors.redAccent;
       case 'warning':
-        return Colors.orange[600]!;
+        return Colors.orange[600] ?? Colors.orange;
       case 'info':
       default:
         // Use a less prominent color for info logs
-        return Colors.blueGrey[600]!;
+        return Colors.blueGrey[600] ?? Colors.blueGrey;
     }
   }
 
@@ -49,201 +51,144 @@ class LogsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final List<LogEntry> logs = appState.logs; // ✅ Use typed logs
-    final isLoading = appState.isFetchingLogs && logs.isEmpty; // Show loading only if logs are empty
-    final error = appState.logsError;
+    return Consumer<AppState>(
+      builder: (context, appState, child) {
+        if (appState.isFetchingLogs) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    return Scaffold(
-      backgroundColor: Colors.grey[100], // Consistent background
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : error != null && logs.isEmpty // Show error only if logs are empty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Error loading logs: $error', 
-                          style: TextStyle(color: Colors.red[700]),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: () => Provider.of<AppState>(context, listen: false).fetchLogs(),
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  ))
-              : RefreshIndicator( // ✅ Add RefreshIndicator
-                  onRefresh: () => context.read<AppState>().fetchLogs(),
-                  child: logs.isEmpty
-                      ? Center(
-                          child: Text(
-                            "No logs available.", 
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                          )
-                        )
-                      : ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(), // Needed for RefreshIndicator
-                          itemCount: logs.length,
-                          itemBuilder: (context, index) {
-                            final log = logs[index]; // ✅ Already typed LogEntry
-                            final hasVideo = log.videoUrl != null && log.videoUrl!.isNotEmpty;
-
-                            return Card(
-                              elevation: 1.5,
-                              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              child: ListTile(
-                                leading: Tooltip(
-                                   message: "Severity: ${log.severity}",
-                                   child: Icon(
-                                    _sourceIcon(log.source),
-                                    color: _severityColor(log.severity),
-                                    size: 28, // Slightly larger icon
-                                  ),
-                                ), 
-                                title: Text(log.eventType.replaceAll('_', ' ').capitalize(), style: const TextStyle(fontWeight: FontWeight.w500)),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("Source: ${log.source}", style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-                                    Text("Time: ${_logTimestampFormatter.format(log.timestamp)}", style: TextStyle(fontSize: 12, color: Colors.grey[700])), // ✅ Format DateTime
-                                    if (hasVideo)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 2.0),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                             Icon(Icons.video_camera_back_outlined, size: 14, color: Colors.blue[600]),
-                                             const SizedBox(width: 4),
-                                             Text("Video available", style: TextStyle(fontStyle: FontStyle.italic, fontSize: 11, color: Colors.blue[600])),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                trailing: Tooltip(
-                                   message: "Severity: ${log.severity}",
-                                   child: Icon(
-                                     log.severity == 'critical' ? Icons.error : 
-                                     log.severity == 'error' ? Icons.cancel : 
-                                     log.severity == 'warning' ? Icons.warning_amber_rounded : 
-                                     Icons.info_outline,
-                                     color: _severityColor(log.severity),
-                                   ),
-                                ),
-                                onTap: () {
-                                   // TODO: Implement log detail view or action
-                                   print("Tapped log: ${log.id}");
-                                   if (hasVideo) {
-                                     // TODO: Handle video playback (e.g., open URL)
-                                      print("Video URL: ${log.videoUrl}");
-                                      _launchURL(log.videoUrl!);
-                                   }
-                                   _showLogDetailsDialog(context, log);
-                                },
-                              ),
-                            );
-                          },
-                        ),
+        if (appState.logsError != null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Error: ${appState.logsError}'),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    appState.clearLogsError();
+                    appState.fetchLogs();
+                  },
+                  child: const Text('Retry'),
                 ),
-      // Remove FAB using old mock method
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: () {
-      //     context.read<AppState>().loadLogsFromJson(); // <-- Incorrect call
-      //   },
-      //   tooltip: 'Refresh Logs',
-      //   child: const Icon(Icons.refresh),
-      // ),
+              ],
+            ),
+          );
+        }
+
+        final logs = appState.logs;
+        if (logs.isEmpty) {
+          return const Center(child: Text('No logs available'));
+        }
+
+        return RefreshIndicator(
+          onRefresh: () => appState.fetchLogs(),
+          child: ListView.builder(
+            itemCount: logs.length,
+            itemBuilder: (context, index) {
+              final log = logs[index];
+              final hasVideo = log.videoUrl != null;
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: ListTile(
+                  leading: Icon(
+                    _sourceIcon(log.source),
+                    color: _severityColor(log.severity),
+                  ),
+                  title: Text(log.eventType),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _logTimestampFormatter.format(log.timestamp.toLocal()),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      if (log.details?.containsKey('message') ?? false)
+                        Text(
+                          log.details!['message'].toString(),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                    ],
+                  ),
+                  trailing: hasVideo
+                      ? const Icon(Icons.videocam_outlined)
+                      : null,
+                  onTap: () => _onLogTap(context, log),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
-}
 
-// --- Helper Function to Launch URL ---
-Future<void> _launchURL(String urlString) async {
-  final Uri uri = Uri.parse(urlString);
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) { // Use external app
-    print('Could not launch $urlString');
-    // Optionally show a snackbar or alert to the user
+  Future<void> _launchUrl(String urlString) async {
+    try {
+      final url = Uri.parse(urlString);
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        _logger.warning('Could not launch $urlString');
+      }
+    } catch (e) {
+      _logger.severe('Error launching URL $urlString: $e');
+    }
   }
-}
 
-// --- Helper Function to Show Log Details Dialog ---
-void _showLogDetailsDialog(BuildContext context, LogEntry log) {
-  // Pretty print the details JSON
-  final encoder = JsonEncoder.withIndent('  ');
-  final String prettyDetails = log.details != null && log.details!.isNotEmpty 
-                                ? encoder.convert(log.details) 
-                                : "No additional details.";
-  final bool hasVideo = log.videoUrl != null && log.videoUrl!.isNotEmpty;
+  void _onLogTap(BuildContext context, LogEntry log) {
+    _logger.info("Tapped log: ${log.id}");
+    if (log.videoUrl != null) {
+      _logger.info("Video URL: ${log.videoUrl}");
+      _launchUrl(log.videoUrl!);
+    }
+    _showLogDetailsDialog(context, log);
+  }
 
-  showDialog(
-    context: context,
-    builder: (BuildContext context) {
-      return AlertDialog(
-        title: Text('Log Details - ID: ${log.id}'),
+  void _showLogDetailsDialog(BuildContext context, LogEntry log) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Log Details - ${log.eventType}'),
         content: SingleChildScrollView(
-          child: ListBody(
-            children: <Widget>[
-              _buildDetailRow('Event Type:', log.eventType.replaceAll('_', ' ').capitalize()),
-              _buildDetailRow('Timestamp:', DateFormat('yyyy-MM-dd HH:mm:ss').format(log.timestamp)),
-              _buildDetailRow('Severity:', log.severity.capitalize()),
-              _buildDetailRow('Source:', log.source.capitalize()),
-              const Divider(height: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Time: ${log.timestamp.toLocal()}'),
+              const SizedBox(height: 8),
+              Text('Severity: ${log.severity}'),
+              const SizedBox(height: 8),
+              Text('Source: ${log.source}'),
+              if (log.userId != null) ...[
+                const SizedBox(height: 8),
+                Text('User ID: ${log.userId}'),
+              ],
+              const SizedBox(height: 16),
               Text('Details:', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 5),
-              Container(
-                 padding: const EdgeInsets.all(8.0),
-                 color: Colors.grey[100], 
-                 child: Text(
-                    prettyDetails, 
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12)
-                 )
-              ),
-              if (hasVideo)
-                 Padding(
-                   padding: const EdgeInsets.only(top: 15.0),
-                   child: ElevatedButton.icon(
-                     icon: const Icon(Icons.videocam_outlined),
-                     label: const Text('View Video'),
-                     onPressed: () => _launchURL(log.videoUrl!),
-                   ),
-                 ),
+              const SizedBox(height: 8),
+              Text(log.details.toString()),
+              if (log.videoUrl != null) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.videocam_outlined),
+                    label: const Text('View Video'),
+                    onPressed: () => _launchUrl(log.videoUrl!),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        actions: <Widget>[
+        actions: [
           TextButton(
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
           ),
         ],
-      );
-    },
-  );
-}
-
-// Helper widget for dialog rows
-Widget _buildDetailRow(String label, String value) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4.0),
-    child: RichText(
-      text: TextSpan(
-        style: TextStyle(color: Colors.black87, fontSize: 14), // Default text style
-        children: <TextSpan>[
-          TextSpan(text: label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          TextSpan(text: ' $value'),
-        ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 // Helper extension for capitalizing strings

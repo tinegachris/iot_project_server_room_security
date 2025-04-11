@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart'; // For date formatting
 
 import '../providers/app_state.dart';
-import '../models/LogEntry.dart';
+import '../models/log_entry.dart';
 
 class LogViewer extends StatelessWidget {
   final int maxEntriesToShow;

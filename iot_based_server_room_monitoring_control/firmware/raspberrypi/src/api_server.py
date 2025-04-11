@@ -67,9 +67,9 @@ def require_api_key(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Door Lock Control --- 
+# --- Door Lock Control ---
 # Assumes GPIO.LOW = Locked, GPIO.HIGH = Unlocked. Adjust if needed.
-DOOR_LOCK_PIN = int(os.getenv("DOOR_LOCK_PIN", "25")) 
+DOOR_LOCK_PIN = int(os.getenv("DOOR_LOCK_PIN", "25"))
 WINDOW_LOCK_PIN = int(os.getenv("WINDOW_LOCK_PIN", "24")) # Add window lock pin
 IS_GPIO_SETUP = False
 IS_WINDOW_GPIO_SETUP = False # Add separate flag for window
@@ -574,4 +574,4 @@ if __name__ == '__main__':
     from waitress import serve
     print("Starting Waitress server for testing...")
     serve(test_app, host='0.0.0.0', port=5000)
-    # test_app.run(host='0.0.0.0', port=5000, debug=True) # Debug=True only for testing 
+    # test_app.run(host='0.0.0.0', port=5000, debug=True) # Debug=True only for testing

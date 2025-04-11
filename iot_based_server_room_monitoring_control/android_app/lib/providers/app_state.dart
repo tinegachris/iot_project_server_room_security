@@ -2,16 +2,19 @@ import 'dart:async'; // For Timer
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Import secure storage
-import '../models/LogEntry.dart'; // Import LogEntry
+import '../models/log_entry.dart'; // Import LogEntry
 import '../models/User.dart'; // Import User
 import '../models/system_status.dart'; // Import SystemStatus models
 import '../services/api_service.dart'; // Import ApiService
+import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 
 class AppState with ChangeNotifier {
   final ApiService _apiService = ApiService(); // Instantiate ApiService
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(); // Instantiate secure storage
   static const String _tokenKey = 'auth_token'; // Key for storing token
   static const String _userKey = 'auth_user'; // Key for storing user info
+  static final Logger _logger = Logger('AppState');
 
   // --- Authentication State ---
   bool _isInitializing = true; // Flag for initial auto-login check
@@ -46,7 +49,10 @@ class AppState with ChangeNotifier {
   // --- User Management State ---
   List<User> _managedUsers = [];
   bool _isLoadingUsers = false;
+  final bool _isCreatingUser = false;
+  final bool _isUpdatingUser = false;
   String? _userManagementError;
+  List<String> _availableRoles = ['User']; // Default role
 
   // --- Getters ---
   // Authentication
@@ -80,6 +86,8 @@ class AppState with ChangeNotifier {
   // User Management
   List<User> get managedUsers => _managedUsers;
   bool get isLoadingUsers => _isLoadingUsers;
+  bool get isCreatingUser => _isCreatingUser;
+  bool get isUpdatingUser => _isUpdatingUser;
   String? get userManagementError => _userManagementError;
 
   // Combined Loading State (can be used by UI elements needing a general loading state)
@@ -89,6 +97,9 @@ class AppState with ChangeNotifier {
   bool get doorLocked => _currentStatus?.sensors['door']?.data?['locked'] ?? false; // Example path
   String get overallSystemStatus => _currentStatus?.status ?? "unknown";
   List<String> get systemErrors => _currentStatus?.errors ?? []; // Example mapping
+
+  // User Management
+  List<String> get availableRoles => _availableRoles;
 
   // --- Authentication Methods ---
 
@@ -100,7 +111,7 @@ class AppState with ChangeNotifier {
     final storedUserJson = await _secureStorage.read(key: _userKey);
 
     if (storedToken != null) {
-      print("Found stored token, attempting auto-login...");
+      _logger.info("Found stored token, attempting auto-login...");
       try {
         final storedUserMap = json.decode(storedUserJson ?? '{}');
         _currentUser = User(
@@ -111,20 +122,20 @@ class AppState with ChangeNotifier {
         );
         _apiService.setAuthToken(storedToken);
         _isAuthenticated = true;
-        
+
         // Must notify *before* async calls that depend on auth state
         notifyListeners();
 
         await fetchCurrentUser();
         await fetchInitialData();
         startPolling();
-        print("Auto-login successful.");
+        _logger.info("Auto-login successful.");
       } catch (e) {
-        print("Auto-login failed: $e");
+        _logger.warning("Auto-login failed: $e");
         await logout(); // Clears storage and state
       }
     } else {
-      print("No stored token found for auto-login.");
+      _logger.info("No stored token found for auto-login.");
     }
     _isInitializing = false;
     notifyListeners();
@@ -134,8 +145,8 @@ class AppState with ChangeNotifier {
     _isLoggingIn = true;
     _loginError = null;
     notifyListeners();
+    _logger.info("AppState: Attempting login with username: $username");
     try {
-      print("AppState: Attempting login with username: $username");
       final responseData = await _apiService.login(username, password);
       final token = responseData['access_token'] as String?;
 
@@ -145,7 +156,7 @@ class AppState with ChangeNotifier {
         _currentUser = User(id: 0, username: username, role: 'unknown', token: token);
         await _secureStorage.write(key: _userKey, value: json.encode({'username': username}));
         _isAuthenticated = true;
-        
+
         // Notify before async calls
         _isLoggingIn = false;
         notifyListeners();
@@ -169,7 +180,7 @@ class AppState with ChangeNotifier {
        return false;
     } catch (e) {
       _loginError = 'Login failed: An unexpected error occurred.';
-      print("AppState login unexpected error: ${e.toString()}");
+      _logger.severe("AppState login unexpected error: ${e.toString()}");
       _isAuthenticated = false;
       _currentUser = null;
       _apiService.setAuthToken(null);
@@ -185,9 +196,9 @@ class AppState with ChangeNotifier {
     if (!_isAuthenticated || _currentUser == null) return;
     _fetchCurrentUserError = null;
     // No separate loading flag for this, usually happens quickly after login/auto-login
-    // notifyListeners(); 
-    
-    print("Fetching full current user details...");
+    // notifyListeners();
+
+    _logger.info("Fetching full current user details...");
     try {
       final userData = await _apiService.fetchUserMe();
       // Merge fetched data with existing token (if any)
@@ -197,23 +208,23 @@ class AppState with ChangeNotifier {
       });
       // Save complete user data to storage
       await _secureStorage.write(key: _userKey, value: json.encode(_currentUser!.toJson()));
-      print("Successfully fetched and updated current user: ${_currentUser?.username}");
+      _logger.info("Successfully fetched and updated current user: ${_currentUser?.username}");
     } on ApiException catch (e) {
       _fetchCurrentUserError = "Failed to fetch user details: ${e.message}";
-      print(_fetchCurrentUserError);
+      _logger.warning(_fetchCurrentUserError);
       // If fetching user fails (e.g., bad token), log out
       if (e.statusCode == 401 || e.statusCode == 403) {
-        print("Logging out due to error fetching current user.");
+        _logger.warning("Logging out due to error fetching current user.");
         await logout();
       }
     } catch (e) {
       _fetchCurrentUserError = "Failed to fetch user details: An unexpected error occurred.";
-      print("$_fetchCurrentUserError Error: $e");
+      _logger.severe("$_fetchCurrentUserError Error: $e");
       // Consider logout on unexpected errors too?
       // await logout();
     } finally {
       // Notify listeners regardless of success/failure to update UI (e.g., drawer header)
-      notifyListeners(); 
+      notifyListeners();
     }
   }
 
@@ -229,12 +240,12 @@ class AppState with ChangeNotifier {
     _loginError = null;
     _registrationMessage = null;
     _controlCommandError = null;
-    _userManagementError = null; 
+    _userManagementError = null;
     _fetchCurrentUserError = null;
     await _secureStorage.deleteAll(); // Clear all secure storage for this app
     _consecutivePollingFailures = 0; // Reset on logout
     _isPollingSuspended = false; // Reset on logout
-    print("User logged out, storage cleared.");
+    _logger.info("User logged out, storage cleared.");
     notifyListeners();
   }
 
@@ -279,8 +290,8 @@ class AppState with ChangeNotifier {
 
   // --- Data Fetching Methods ---
   Future<void> fetchInitialData() async {
-    if (!_isAuthenticated) return; 
-    print("Fetching initial data (status and logs)...");
+    if (!_isAuthenticated) return;
+    _logger.info("Fetching initial data (status and logs)...");
     // Reset errors before fetching
     _statusError = null;
     _logsError = null;
@@ -297,12 +308,12 @@ class AppState with ChangeNotifier {
       ]);
     } catch (e) {
       // Errors are set within the individual fetch methods
-      print("Error during fetchInitialData: $e"); // Log the combined error if Future.wait fails
+      _logger.severe("Error during fetchInitialData: $e");
     } finally {
       _isFetchingStatus = false;
       _isFetchingLogs = false;
       notifyListeners(); // Notify once after both complete (or fail)
-      print("Finished fetching initial data.");
+      _logger.info("Finished fetching initial data.");
     }
   }
 
@@ -316,13 +327,13 @@ class AppState with ChangeNotifier {
       _currentStatus = SystemStatus.fromJson(statusData);
     } on ApiException catch (e) {
       _statusError = e.message;
-      print("Error fetching system status: $_statusError");
+      _logger.warning("Error fetching system status: $_statusError");
       // Optionally clear status: _currentStatus = null;
       // Rethrow only if not part of fetchInitialData
       if (notify) rethrow;
     } catch (e) {
       _statusError = "An unexpected error occurred fetching status.";
-       print("Unexpected error fetching system status: $e");
+      _logger.severe("Unexpected error fetching system status: $e");
       if (notify) rethrow;
     } finally {
       _isFetchingStatus = false;
@@ -340,12 +351,12 @@ class AppState with ChangeNotifier {
       _logs = logListData.map((logJson) => LogEntry.fromJson(logJson as Map<String, dynamic>)).toList();
     } on ApiException catch (e) {
       _logsError = e.message;
-      print("Error fetching logs: $_logsError");
+      _logger.warning("Error fetching logs: $_logsError");
        // Optionally clear logs: _logs = [];
       if (notify) rethrow;
     } catch (e) {
        _logsError = "An unexpected error occurred fetching logs.";
-       print("Unexpected error fetching logs: $e");
+       _logger.severe("Unexpected error fetching logs: $e");
        if (notify) rethrow;
     } finally {
         _isFetchingLogs = false;
@@ -357,7 +368,7 @@ class AppState with ChangeNotifier {
   Future<void> executeControlCommand(String piCommand, [Map<String, dynamic>? data]) async {
     if (!_isAuthenticated) return;
 
-    _isExecutingControlCommand = true; 
+    _isExecutingControlCommand = true;
     _controlCommandError = null;
     _executingAction = piCommand; // Set the specific action
     notifyListeners();
@@ -365,18 +376,18 @@ class AppState with ChangeNotifier {
     try {
       // Use the sendPiCommand which calls the server's /control endpoint
       await _apiService.sendPiCommand(piCommand, data);
-      print('Control command "$piCommand" sent successfully via server.');
+      _logger.info('Control command "$piCommand" sent successfully via server.');
       // Command sent successfully, now refresh status to see effect
       await fetchSystemStatus(); // Refresh status after command
     } on ApiException catch(e) {
       _controlCommandError = 'Failed command "$piCommand": ${e.message}';
-       print(_controlCommandError);
+      _logger.warning(_controlCommandError);
        // Do NOT automatically clear the error here, let the UI show it
        rethrow; // Rethrow so the UI catch block can handle it (e.g., show SnackBar)
     } catch (e) {
       _controlCommandError = 'Failed command "$piCommand": An unexpected error occurred.';
-       print("$_controlCommandError Error: $e");
-       rethrow; 
+      _logger.severe("$_controlCommandError Error: $e");
+      rethrow;
     } finally {
       _isExecutingControlCommand = false;
       _executingAction = null; // Clear the specific action
@@ -386,15 +397,15 @@ class AppState with ChangeNotifier {
 
   // --- Polling for Real-time Updates ---
   void startPolling({Duration interval = const Duration(seconds: 15)}) {
-    stopPolling(); 
-    if (!_isAuthenticated) return; 
+    stopPolling();
+    if (!_isAuthenticated) return;
     _consecutivePollingFailures = 0; // Reset counter on starting/restarting polling
     _isPollingSuspended = false; // Ensure polling is not suspended when starting
-    print("Resetting polling failure count and suspension status.");
+    _logger.info("Resetting polling failure count and suspension status.");
 
-    print("Starting status polling (interval: ${interval.inSeconds} seconds)");
+    _logger.info("Starting status polling (interval: ${interval.inSeconds} seconds)");
     _statusPollingTimer = Timer.periodic(interval, (timer) {
-      print("Polling tick..."); 
+      _logger.fine("Polling tick...");
       _fetchStatusAndLogsSilently();
     });
      _fetchStatusAndLogsSilently(); // Fetch immediately on start
@@ -410,19 +421,19 @@ class AppState with ChangeNotifier {
     // --- Fetch Status ---
     bool statusFetchSuccess = false; // Track success for this cycle
     try {
-      print("Polling: Attempting to fetch system status...");
+      _logger.info("Polling: Attempting to fetch system status...");
       final statusData = await _apiService.fetchSystemStatus();
       if (_statusPollingTimer != null) {
         _currentStatus = SystemStatus.fromJson(statusData);
         _statusError = null; // Clear specific status error on success
-        statusFetchSuccess = true; 
-        print("Polling: Successfully fetched status.");
+        statusFetchSuccess = true;
+        _logger.info("Polling: Successfully fetched status.");
       }
     } on ApiException catch (e) {
-       print("Polling Error fetching status: ${e.message}");
+       _logger.warning("Polling Error fetching status: ${e.message}");
        currentPollingStatusError = e.message;
     } catch (e) {
-       print("Polling: Unexpected error fetching status: $e");
+       _logger.severe("Polling: Unexpected error fetching status: $e");
        currentPollingStatusError = "Unexpected status fetch error";
     }
 
@@ -431,19 +442,19 @@ class AppState with ChangeNotifier {
     bool logsFetchSuccess = false; // Track success for this cycle
 
     try {
-       print("Polling: Attempting to fetch logs...");
+       _logger.info("Polling: Attempting to fetch logs...");
        final logListData = await _apiService.fetchLogs();
        if (_statusPollingTimer != null) {
          _logs = logListData.map((logJson) => LogEntry.fromJson(logJson as Map<String, dynamic>)).toList();
          _logsError = null; // Clear specific logs error on success
          logsFetchSuccess = true;
-         print("Polling: Successfully fetched logs, count: ${_logs.length}");
+         _logger.info("Polling: Successfully fetched logs, count: ${_logs.length}");
        }
     } on ApiException catch (e) {
-       print("Polling Error fetching logs: ${e.message}");
+       _logger.warning("Polling Error fetching logs: ${e.message}");
        currentPollingLogsError = e.message;
     } catch (e) {
-       print("Polling: Unexpected error fetching logs: $e");
+       _logger.severe("Polling: Unexpected error fetching logs: $e");
        currentPollingLogsError = "Unexpected logs fetch error";
     }
 
@@ -456,9 +467,9 @@ class AppState with ChangeNotifier {
        // Handle consecutive failures
        if (!statusFetchSuccess || !logsFetchSuccess) {
           _consecutivePollingFailures++;
-          print("Polling failure count: $_consecutivePollingFailures");
+          _logger.warning("Polling failure count: $_consecutivePollingFailures");
           if (_consecutivePollingFailures >= 5) { // Threshold for suspension
-              print("Suspending polling due to repeated errors.");
+              _logger.warning("Suspending polling due to repeated errors.");
               _isPollingSuspended = true;
               stopPolling(); // Stop the timer
               // Keep _statusError and _logsError as they are
@@ -470,12 +481,12 @@ class AppState with ChangeNotifier {
        // Handle critical errors during polling
        final combinedError = [_statusError, _logsError].where((e) => e != null).join(" | ");
        if (combinedError.contains("Unauthorized") || combinedError.contains("Forbidden")) {
-          print("Authentication error detected during polling. Stopping polling.");
+          _logger.warning("Authentication error detected during polling. Stopping polling.");
           stopPolling();
           // Consider triggering logout
-          // Future.microtask(() => logout()); 
+          // Future.microtask(() => logout());
        } else if (combinedError.contains("Received HTML")) {
-          print("HTML received during polling, likely ngrok/tunnel issue. Keeping polling active but showing error.");
+          _logger.warning("HTML received during polling, likely ngrok/tunnel issue. Keeping polling active but showing error.");
        }
        notifyListeners();
     }
@@ -483,7 +494,7 @@ class AppState with ChangeNotifier {
 
   void stopPolling() {
      if (_statusPollingTimer != null) {
-        print("Stopping status polling timer.");
+        _logger.info("Stopping status polling timer.");
         _statusPollingTimer?.cancel();
         _statusPollingTimer = null;
         // Don't reset _isPollingSuspended here, only when manually starting
@@ -511,7 +522,7 @@ class AppState with ChangeNotifier {
       _registrationMessage = response['message'] ?? "Registration Successful!";
       _isRegistering = false;
       notifyListeners();
-      return true; 
+      return true;
     } on ApiException catch (e) {
       _registrationMessage = 'Registration failed: ${e.message}';
       _isRegistering = false;
@@ -528,14 +539,14 @@ class AppState with ChangeNotifier {
   // --- Manual Alert Method ---
   Future<void> postManualAlert(String message, {String? videoUrl}) async {
      // Reuse control command state for loading/error, or create specific ones?
-     _isExecutingControlCommand = true; 
+     _isExecutingControlCommand = true;
      _controlCommandError = null;
      notifyListeners();
      try {
         final response = await _apiService.postManualAlert(message, videoUrl: videoUrl);
-        print("Manual alert posted: ${response['message']}");
+        _logger.info("Manual alert posted: ${response['message']}");
         // Optional: Show success temporarily using the control error field?
-        // _controlCommandError = response['message'] ?? "Alert posted successfully"; 
+        // _controlCommandError = response['message'] ?? "Alert posted successfully";
         // await fetchLogs(); // Refresh logs after posting alert
      } on ApiException catch (e) {
         _controlCommandError = 'Failed to post manual alert: ${e.message}';
@@ -555,13 +566,13 @@ class AppState with ChangeNotifier {
 
     _isLoadingUsers = true;
     _userManagementError = null;
-    notifyListeners(); 
+    notifyListeners();
     try {
       final usersData = await _apiService.fetchUsers();
       _managedUsers = usersData.map((data) => User.fromJson(data as Map<String, dynamic>)).toList();
     } on ApiException catch(e) {
       _userManagementError = "Failed to fetch users: ${e.message}";
-      _managedUsers = []; 
+      _managedUsers = [];
     } catch (e) {
        _userManagementError = "Failed to fetch users: An unexpected error occurred.";
        _managedUsers = [];
@@ -577,20 +588,20 @@ class AppState with ChangeNotifier {
      required String password,
      required String role,
   }) async {
-      _isLoadingUsers = true; 
+      _isLoadingUsers = true;
       _userManagementError = null;
       notifyListeners();
       try {
          // Derive isAdmin flag from role string
-         bool isAdmin = role.toLowerCase() == 'admin'; 
-         await _apiService.createUser(name, email, password, isAdmin); 
-         await fetchManagedUsers(forceRefresh: true); 
-         return true; 
+         bool isAdmin = role.toLowerCase() == 'admin';
+         await _apiService.createUser(name, email, password, isAdmin);
+         await fetchManagedUsers(forceRefresh: true);
+         return true;
       } on ApiException catch (e) {
          _userManagementError = "Failed to create user: ${e.message}";
          _isLoadingUsers = false;
          notifyListeners();
-         return false; 
+         return false;
       } catch (e) {
          _userManagementError = "Failed to create user: An unexpected error occurred.";
          _isLoadingUsers = false;
@@ -616,8 +627,8 @@ class AppState with ChangeNotifier {
       // Call the ApiService method
       await _apiService.updateUser(
         id,
-        name: name, 
-        email: email, 
+        name: name,
+        email: email,
         role: role,
         // Add other fields like isActive, password if needed by API
       );
@@ -641,12 +652,12 @@ class AppState with ChangeNotifier {
   }
 
   Future<bool> deleteManagedUser(int id) async {
-     _isLoadingUsers = true; 
+     _isLoadingUsers = true;
      _userManagementError = null;
      notifyListeners();
      try {
         await _apiService.deleteUser(id);
-        await fetchManagedUsers(forceRefresh: true); 
+        await fetchManagedUsers(forceRefresh: true);
         return true;
      } on ApiException catch (e) {
         _userManagementError = "Failed to delete user: ${e.message}";
@@ -659,6 +670,17 @@ class AppState with ChangeNotifier {
         notifyListeners();
         return false;
      }
+  }
+
+  Future<void> fetchAvailableRoles() async {
+    try {
+      final roles = await _apiService.fetchAvailableRoles();
+      _availableRoles = roles;
+      notifyListeners();
+    } catch (e) {
+      _logger.warning("Error fetching roles: $e");
+      // Keep default 'User' role if fetch fails
+    }
   }
 }
 

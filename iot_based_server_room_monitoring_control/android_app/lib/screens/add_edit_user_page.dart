@@ -4,89 +4,91 @@ import '../providers/app_state.dart';
 import '../models/User.dart'; // Assuming User model path is correct
 
 class AddEditUserPage extends StatefulWidget {
-  final User? userToEdit; // Pass user data if editing, null if adding
+  final User? user; // User to edit, null if adding
 
-  const AddEditUserPage({super.key, this.userToEdit});
+  const AddEditUserPage({super.key, this.user});
 
   @override
-  State<AddEditUserPage> createState() => _AddEditUserPageState();
+  AddEditUserPageState createState() => AddEditUserPageState();
 }
 
-class _AddEditUserPageState extends State<AddEditUserPage> {
+class AddEditUserPageState extends State<AddEditUserPage> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _usernameController;
-  late TextEditingController _emailController;
-  late TextEditingController _passwordController;
-  late String _selectedRole; // Manage role selection
-  late bool _isAdmin; // Manage admin status
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  String _selectedRole = 'User'; // Default role
 
-  bool get _isEditing => widget.userToEdit != null;
+  bool get _isEditing => widget.user != null;
 
   @override
   void initState() {
     super.initState();
 
-    final user = widget.userToEdit;
-    _usernameController = TextEditingController(text: user?.username ?? '');
-    _emailController = TextEditingController(text: user?.email ?? '');
-    _passwordController = TextEditingController(); // Password always starts empty
-    _selectedRole = user?.role ?? 'user'; // Default to 'user' if adding
-    _isAdmin = user?.role == 'admin'; // Derive from role, assuming admin role implies is_admin flag
+    final user = widget.user;
+    _nameController.text = user?.username ?? '';
+    _emailController.text = user?.email ?? '';
+    _passwordController.text = ''; // Password always starts empty for editing
+    _selectedRole = user?.role ?? 'User'; // Default to 'User' if adding
 
-    // TODO: Get available roles dynamically if needed, instead of hardcoding
+    // Fetch available roles
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<AppState>(context, listen: false).fetchAvailableRoles();
+    });
   }
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submitForm() async {
+    final appState = Provider.of<AppState>(context, listen: false);
+    // Correctly access AppState loading properties using getters
+    if (appState.isLoadingUsers || appState.isCreatingUser || appState.isUpdatingUser) {
+      return; // Don't submit if already busy
+    }
+
     if (!_formKey.currentState!.validate()) {
       return; // Don't submit if validation fails
     }
 
-    final appState = Provider.of<AppState>(context, listen: false);
+    final name = _nameController.text;
+    final email = _emailController.text;
+    final password = _passwordController.text;
+    final role = _selectedRole;
+
     bool success = false;
     String? errorMessage;
 
     try {
-      if (_isEditing) {
-        // --- Update Logic ---
-        print("Attempting to update user ID: ${widget.userToEdit!.id}");
-        // TODO: Implement update user logic in AppState/ApiService
-        // success = await appState.updateManagedUser(
-        //   id: widget.userToEdit!.id,
-        //   name: _usernameController.text, // Assuming username acts as name here?
-        //   email: _emailController.text,
-        //   role: _selectedRole,
-        //   // Password update might be separate or handled here if provided
-        //   // password: _passwordController.text.isNotEmpty ? _passwordController.text : null,
-        // );
-         success = false; // Placeholder
-         errorMessage = "Update functionality not fully implemented yet.";
-
+      if (widget.user != null) {
+        // Editing existing user
+        // updateManagedUser expects ID first, then named args
+        success = await appState.updateManagedUser(
+          id: widget.user!.id,
+          name: name,
+          email: email,
+          role: role,
+        );
+        errorMessage = appState.userManagementError;
       } else {
-        // --- Create Logic ---
-         print("Attempting to create user: ${_usernameController.text}");
-         success = await appState.createManagedUser(
-           // Assuming username doubles as name for now, adjust if separate name field needed
-           name: _usernameController.text, 
-           email: _emailController.text,
-           password: _passwordController.text, // Password required for creation
-           role: _selectedRole,
-           // is_admin is potentially derived from role on server? Or pass explicitly?
-           // isAdmin: _isAdmin, 
-         );
-         errorMessage = appState.userManagementError;
+        // Adding new user - use named arguments
+        success = await appState.createManagedUser(
+          name: name,
+          email: email,
+          password: password,
+          role: role
+        );
+        errorMessage = appState.userManagementError;
       }
 
        if (mounted) {
-           final message = success 
-               ? (_isEditing ? 'User updated successfully.' : 'User created successfully.') 
+           final message = success
+               ? (_isEditing ? 'User updated successfully.' : 'User created successfully.')
                : (errorMessage ?? (_isEditing ? 'Failed to update user.' : 'Failed to create user.'));
            final color = success ? Colors.green : Colors.red;
 
@@ -112,9 +114,8 @@ class _AddEditUserPageState extends State<AddEditUserPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Use a Consumer to react to loading state changes if you add specific loading flags
-    // final isLoading = context.select((AppState state) => _isEditing ? state.isUpdatingUser : state.isCreatingUser);
-    final isLoading = context.select((AppState state) => state.isLoadingUsers); // Use general user loading for now
+    final isLoading = context.select((AppState state) => state.isLoadingUsers);
+    final availableRoles = context.select((AppState state) => state.availableRoles);
 
     return Scaffold(
       appBar: AppBar(
@@ -129,14 +130,14 @@ class _AddEditUserPageState extends State<AddEditUserPage> {
             children: <Widget>[
               // --- Username ---
               TextFormField(
-                controller: _usernameController,
+                controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   prefixIcon: Icon(Icons.person_outline),
                   border: OutlineInputBorder(),
                 ),
                  // Username might not be editable for existing users
-                 readOnly: _isEditing, 
+                 readOnly: _isEditing,
                  style: _isEditing ? const TextStyle(color: Colors.grey) : null,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -199,40 +200,23 @@ class _AddEditUserPageState extends State<AddEditUserPage> {
                    prefixIcon: Icon(Icons.badge_outlined),
                    border: OutlineInputBorder(),
                  ),
-                 // TODO: Get roles from a central config or API if possible
-                 items: <String>['user', 'admin', 'it_staff', 'maintenance'] 
+                 items: availableRoles
                      .map<DropdownMenuItem<String>>((String value) {
                    return DropdownMenuItem<String>(
                      value: value,
-                     child: Text(value.replaceAll('_', ' ').toUpperCase()), // Format role name
+                     child: Text(value),
                    );
                  }).toList(),
                  onChanged: (String? newValue) {
                    if (newValue != null) {
                      setState(() {
                        _selectedRole = newValue;
-                       _isAdmin = newValue == 'admin'; // Update admin flag based on role
                      });
                    }
                  },
                   validator: (value) => value == null ? 'Please select a role' : null,
                ),
                const SizedBox(height: 16.0),
-
-                // --- Is Admin (Consider if needed or derived from Role) ---
-               // CheckboxListTile(
-               //   title: const Text("Administrator Privileges"),
-               //   value: _isAdmin,
-               //   onChanged: (bool? value) {
-               //     setState(() {
-               //       _isAdmin = value ?? false;
-               //       // If setting admin, maybe force role to 'admin'?
-               //       if (_isAdmin) _selectedRole = 'admin';
-               //     });
-               //   },
-               //   controlAffinity: ListTileControlAffinity.leading,
-               // ),
-               // const SizedBox(height: 24.0),
 
               // --- Submit Button ---
               ElevatedButton.icon(
@@ -250,4 +234,4 @@ class _AddEditUserPageState extends State<AddEditUserPage> {
       ),
     );
   }
-} 
+}
