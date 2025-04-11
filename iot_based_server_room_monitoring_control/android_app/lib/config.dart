@@ -3,7 +3,7 @@
 class AppConfig {
   // Server API Configuration
   static const String serverScheme = "https";
-  static const String serverHost = "bf09-196-207-133-221.ngrok-free.app"; // Updated to ngrok URL
+  static const String serverHost = "cf3d-196-207-133-221.ngrok-free.app"; // Updated to ngrok URL
   static const int serverPort = 443; // Using HTTPS default port for ngrok
   static const String serverApiBasePath = "/api/v1";
 

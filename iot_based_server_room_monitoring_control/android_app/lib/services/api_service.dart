@@ -8,7 +8,6 @@ import '../config.dart'; // Import config
 class ApiService {
   // Use URLs from AppConfig
   final String _serverBaseUrl = AppConfig.serverBaseUrl;
-  final String _piBaseUrl = AppConfig.raspberryPiBaseUrl;
 
   String? _authToken; // Store the auth token
 
