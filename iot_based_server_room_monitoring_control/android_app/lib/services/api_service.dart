@@ -48,7 +48,7 @@ class ApiService {
         try {
             return json.decode(response.body) as Map<String, dynamic>;
         } catch (e) {
-             print("Error decoding JSON: ${e}");
+             print("Error decoding JSON: $e");
              print("Received body: ${response.body}");
              throw ApiException('Failed to decode JSON response.', response.statusCode);
         }
@@ -81,7 +81,7 @@ class ApiService {
               errorMessage = errorBody['error'] ?? errorBody['message'] ?? json.encode(errorBody); // Broader check
           }
         } catch (e) {
-          errorMessage = response.body.length > 200 ? response.body.substring(0, 200) + '...' : response.body; // Fallback to raw body (truncated)
+          errorMessage = response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body; // Fallback to raw body (truncated)
         }
       } else {
          errorMessage = 'API Error with empty response body.';
@@ -102,7 +102,7 @@ class ApiService {
            try {
              return json.decode(response.body) as List<dynamic>;
           } catch (e) {
-             print("Error decoding JSON list: ${e}");
+             print("Error decoding JSON list: $e");
              print("Received body: ${response.body}");
              throw ApiException('Failed to decode JSON list response.', response.statusCode);
           }
@@ -131,7 +131,7 @@ class ApiService {
                  errorMessage = errorBody['error'] ?? errorBody['message'] ?? json.encode(errorBody);
              }
            } catch (e) {
-             errorMessage = response.body.length > 200 ? response.body.substring(0, 200) + '...' : response.body;
+             errorMessage = response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body;
            }
          } else {
              errorMessage = 'API Error with empty response body.';

@@ -112,14 +112,12 @@ class StatusDashboard extends StatelessWidget {
 
         // Format last heartbeat time
         String lastHeartbeatFormatted = "N/A";
-         if (status.raspberryPi.lastHeartbeat != null) {
-            try {
-              lastHeartbeatFormatted = DateFormat('yyyy-MM-dd HH:mm:ss').format(status.raspberryPi.lastHeartbeat!);
-            } catch (_) {
-               lastHeartbeatFormatted = "Invalid Date"; // Handle parsing errors if any
-            }
-        }
-        
+          try {
+            lastHeartbeatFormatted = DateFormat('yyyy-MM-dd HH:mm:ss').format(status.raspberryPi.lastHeartbeat!);
+          } catch (_) {
+             lastHeartbeatFormatted = "Invalid Date"; // Handle parsing errors if any
+          }
+              
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -228,7 +226,7 @@ class StatusDashboard extends StatelessWidget {
              ...errors.map((error) => Padding(
                 padding: const EdgeInsets.only(bottom: 4.0),
                 child: Text('- $error', style: TextStyle(color: Colors.red[900])),
-             )).toList(),
+             )),
            ],
          ),
        ),

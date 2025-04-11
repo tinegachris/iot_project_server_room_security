@@ -173,7 +173,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add),
         tooltip: 'Add User',
         onPressed: () {
           // TODO: Navigate to AddEditUserPage (without user data for creation)
@@ -181,6 +180,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
             const SnackBar(content: Text('Add user functionality not implemented yet.'))
           );
         },
+        child: const Icon(Icons.add),
       ),
     );
   }

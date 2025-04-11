@@ -13,7 +13,7 @@ class ControlsPage extends StatelessWidget {
     final isExecutingCommand = context.select((AppState state) => state.isExecutingControlCommand);
 
     // Helper function to create styled buttons
-    Widget _buildControlButton({
+    Widget buildControlButton({
       required String label,
       required IconData icon,
       required String action,
@@ -75,14 +75,14 @@ class ControlsPage extends StatelessWidget {
             const SizedBox(height: 20), // Add some space at the top
 
             // --- Door Controls ---
-             _buildControlButton(
+             buildControlButton(
               label: 'Lock Door',
               icon: Icons.lock_outline,
               action: 'lock',
               buttonColor: Colors.teal,
               ctx: context,
             ),
-             _buildControlButton(
+             buildControlButton(
               label: 'Unlock Door',
               icon: Icons.lock_open_outlined,
               action: 'unlock',
@@ -93,14 +93,14 @@ class ControlsPage extends StatelessWidget {
             const Divider(indent: 16, endIndent: 16, height: 30),
 
             // --- Camera Controls ---
-             _buildControlButton(
+             buildControlButton(
               label: 'Capture Image',
               icon: Icons.camera_alt_outlined,
               action: 'capture_image',
               buttonColor: Colors.indigo,
               ctx: context,
             ),
-             _buildControlButton(
+             buildControlButton(
               label: 'Record Video (10s)', // Specify duration for clarity
               icon: Icons.videocam_outlined,
               action: 'record_video',
@@ -112,21 +112,21 @@ class ControlsPage extends StatelessWidget {
              const Divider(indent: 16, endIndent: 16, height: 30),
 
              // --- System Controls ---
-             _buildControlButton(
+             buildControlButton(
               label: 'Test Sensors',
               icon: Icons.sensors,
               action: 'test_sensors',
               buttonColor: Colors.blueGrey,
               ctx: context,
             ),
-             _buildControlButton(
+             buildControlButton(
               label: 'Clear Logs',
               icon: Icons.delete_sweep_outlined,
               action: 'clear_logs',
               buttonColor: Colors.orange[700],
               ctx: context,
             ),
-             _buildControlButton(
+             buildControlButton(
               label: 'Restart Pi',
               icon: Icons.power_settings_new,
               action: 'restart_system',

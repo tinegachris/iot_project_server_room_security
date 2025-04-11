@@ -304,7 +304,7 @@ Widget _sensorCard(SensorStatus sensor) => Card(
           if (sensor.data != null && sensor.data!.isNotEmpty)
              ...sensor.data!.entries.map((entry) => 
                 _sensorDetailRow(entry.key.capitalize(), entry.value.toString())
-             ).toList(),
+             ),
         ],
       ),
     ),

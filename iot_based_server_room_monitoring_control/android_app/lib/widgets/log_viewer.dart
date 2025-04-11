@@ -30,7 +30,7 @@ class LogViewer extends StatelessWidget {
    // Helper to get icon based on log severity or eventType
   IconData _getLogIcon(LogEntry log) {
     // Prioritize severity
-     switch (log.severity?.toLowerCase()) {
+     switch (log.severity.toLowerCase()) {
       case 'critical':
       case 'error':
         return Icons.error_outline;

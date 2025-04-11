@@ -45,7 +45,7 @@ class _LogsPageState extends State<LogsPage> {
   }
 
   IconData _getLogIcon(LogEntry log) {
-    switch (log.severity?.toLowerCase()) {
+    switch (log.severity.toLowerCase()) {
       case 'critical':
       case 'error':
         return Icons.error_outline;
