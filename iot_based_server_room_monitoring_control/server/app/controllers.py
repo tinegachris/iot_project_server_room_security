@@ -22,7 +22,10 @@ from .auth import verify_password, get_current_user
 from urllib.parse import urlparse
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 async def process_alert_and_event(
