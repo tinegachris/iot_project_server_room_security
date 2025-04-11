@@ -39,6 +39,7 @@ load_dotenv()
 try:
     import platform
     IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
+    # IS_RASPBERRY_PI = False
     if IS_RASPBERRY_PI:
         from picamera2 import Picamera2
         from picamera2.encoders import H264Encoder

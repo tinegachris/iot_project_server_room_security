@@ -246,7 +246,7 @@ class SensorManager:
                         logger.warning("Unauthorized RFID access: %s", uid_str)
                         self._handle_unauthorized_access(uid_str)
 
-                time.sleep(0.5)  # Shorter sleep for more responsive RFID reading
+                time.sleep(60)  # Check RFID every 60 seconds
             except Exception as e:
                 self._update_sensor_status('rfid', False, str(e))
                 logger.error("RFID error: %s", e)
