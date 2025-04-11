@@ -1,3 +1,4 @@
+
 class User {
   final int id;
   final String username;

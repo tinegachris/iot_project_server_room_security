@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Import secure storage
 import '../models/log_entry.dart'; // Import LogEntry
-import '../models/user.dart'; // Import User
+import '../models/app_user.dart'; // Import User
 import '../models/system_status.dart'; // Import SystemStatus models
 import '../services/api_service.dart'; // Import ApiService
 import 'package:flutter/foundation.dart';

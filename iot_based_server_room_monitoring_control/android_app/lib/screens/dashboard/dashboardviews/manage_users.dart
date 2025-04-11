@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // ✅ Keep provider
 import '../../../providers/app_state.dart'; // ✅ Keep AppState import
 // import '../../../services/api_service.dart';
-import '../../../models/user.dart'; // ✅ Keep User model import
+import '../../../models/app_user.dart'; // ✅ Keep User model import
 
 class ManageUsersScreen extends StatefulWidget {
   const ManageUsersScreen({super.key});

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../models/user.dart'; // Assuming User model path is correct
+import '../models/app_user.dart'; // Assuming User model path is correct
 
 class AddEditUserPage extends StatefulWidget {
   final User? user; // User to edit, null if adding
