@@ -49,6 +49,7 @@ AUTHORIZED_CARDS: Dict[Tuple[int, int, int, int, int], CardInfo] = {
 # Check if running on Raspberry Pi
 try:
     IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
+    # IS_RASPBERRY_PI = False
     if IS_RASPBERRY_PI:
         logger.info("Running on Raspberry Pi with real RFID hardware")
     else:
@@ -79,7 +80,7 @@ class MockMFRC522:
         """Initialize the mock RFID reader."""
         self.spd = spd
         self._last_read_time = 0
-        self._read_cooldown = 1.0  # seconds
+        self._read_cooldown = 150.0  # time to wait before next read
         # Get list of authorized UIDs for random selection
         self._authorized_uids = list(AUTHORIZED_CARDS.keys())
         logger.info("Mock MFRC522 initialized")

@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     # Use platform module for consistency
     IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
+    # IS_RASPBERRY_PI = False
     if IS_RASPBERRY_PI:
         logger.info("Running on Raspberry Pi with real GPIO hardware")
         # Import GPIOZero components only if on RPi
