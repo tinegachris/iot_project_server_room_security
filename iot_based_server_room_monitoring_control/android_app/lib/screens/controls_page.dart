@@ -38,10 +38,11 @@ class ControlsPage extends StatelessWidget {
           onPressed: isExecutingCommand
               ? null
               : () async {
+                  final scaffoldMessenger = ScaffoldMessenger.of(ctx);
                   try {
                     await appState.executeControlCommand(action, parameters);
                     // Show success feedback
-                    ScaffoldMessenger.of(ctx).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       SnackBar(
                         content: Text('Command "$label" sent successfully.'),
                         backgroundColor: Colors.green,
@@ -50,7 +51,7 @@ class ControlsPage extends StatelessWidget {
                   } catch (e) {
                     // Show error feedback from AppState or a generic message
                     final errorMsg = appState.controlCommandError ?? e.toString();
-                    ScaffoldMessenger.of(ctx).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       SnackBar(
                         content: Text('Failed to execute "$label": $errorMsg'),
                         backgroundColor: Colors.red,

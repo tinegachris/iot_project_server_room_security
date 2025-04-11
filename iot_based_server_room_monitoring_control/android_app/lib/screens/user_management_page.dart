@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../models/User.dart';
+import '../models/user.dart';
+import '../screens/add_edit_user_page.dart';
 
 class UserManagementPage extends StatefulWidget {
   const UserManagementPage({super.key});
@@ -23,6 +24,8 @@ class _UserManagementPageState extends State<UserManagementPage> {
   }
 
   Future<void> _confirmAndDeleteUser(BuildContext ctx, AppState appState, User user) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(ctx);
+
     final confirm = await showDialog<bool>(
       context: ctx,
       builder: (BuildContext dialogContext) {
@@ -32,12 +35,12 @@ class _UserManagementPageState extends State<UserManagementPage> {
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () => Navigator.of(dialogContext).pop(false), // Return false
+              onPressed: () => Navigator.of(dialogContext).pop(false),
             ),
             TextButton(
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('DELETE'),
-              onPressed: () => Navigator.of(dialogContext).pop(true), // Return true
+              onPressed: () => Navigator.of(dialogContext).pop(true),
             ),
           ],
         );
@@ -45,8 +48,6 @@ class _UserManagementPageState extends State<UserManagementPage> {
     );
 
     if (confirm == true) {
-      // Use the context from the main build method (ctx) for ScaffoldMessenger
-      final scaffoldMessenger = ScaffoldMessenger.of(ctx);
       try {
         final success = await appState.deleteManagedUser(user.id);
         final message = success ? 'User deleted successfully.' : (appState.userManagementError ?? 'Failed to delete user.');
@@ -57,7 +58,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
           ),
         );
       } catch (e) {
-         scaffoldMessenger.showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('Error deleting user: ${e.toString()}'),
             backgroundColor: Colors.red,
@@ -110,7 +111,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
               ),
             );
           }
-          
+
           // Handle empty state
            if (users.isEmpty) {
               return Center(
@@ -152,10 +153,11 @@ class _UserManagementPageState extends State<UserManagementPage> {
                         icon: const Icon(Icons.edit_outlined, color: Colors.blue),
                         tooltip: 'Edit User',
                         onPressed: () {
-                          // TODO: Navigate to AddEditUserPage with user data
-                           ScaffoldMessenger.of(context).showSnackBar(
-                             const SnackBar(content: Text('Edit functionality not implemented yet.'))
-                           );
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => AddEditUserPage(user: user),
+                            ),
+                          );
                         },
                       ),
                       IconButton(
@@ -175,13 +177,14 @@ class _UserManagementPageState extends State<UserManagementPage> {
       floatingActionButton: FloatingActionButton(
         tooltip: 'Add User',
         onPressed: () {
-          // TODO: Navigate to AddEditUserPage (without user data for creation)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Add user functionality not implemented yet.'))
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const AddEditUserPage(),
+            ),
           );
         },
         child: const Icon(Icons.add),
       ),
     );
   }
-} 
+}

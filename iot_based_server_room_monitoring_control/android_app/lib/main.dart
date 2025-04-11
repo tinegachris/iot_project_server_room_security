@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:security_iot/providers/app_state.dart';
-import 'package:security_iot/screens/dashboard/dashboard_screen.dart';
-import 'package:security_iot/screens/login%20and%20signup/login_and_register.dart';
+import 'providers/app_state.dart';
+import 'screens/dashboard/dashboard_screen.dart';
+import 'screens/login and signup/login_and_register.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized

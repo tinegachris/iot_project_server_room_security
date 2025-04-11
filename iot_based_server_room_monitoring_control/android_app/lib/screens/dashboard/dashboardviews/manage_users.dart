@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // ✅ Keep provider
 import '../../../providers/app_state.dart'; // ✅ Keep AppState import
 // import '../../../services/api_service.dart';
-import '../../../models/User.dart'; // ✅ Keep User model import
+import '../../../models/user.dart'; // ✅ Keep User model import
 
 class ManageUsersScreen extends StatefulWidget {
   const ManageUsersScreen({super.key});
@@ -119,7 +119,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                       onPressed: () => _editUser(context, appState, user),
                     ),
                     IconButton(
-                      icon: Icon(Icons.delete_outline, color: Colors.redAccent),
+                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                       tooltip: 'Delete User',
                       // Call AppState method directly
                       onPressed: () => _confirmDeleteUser(context, appState, user.id),

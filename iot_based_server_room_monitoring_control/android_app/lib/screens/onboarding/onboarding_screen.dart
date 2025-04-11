@@ -11,7 +11,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  final List<OnboardingPage> _pages = [
+  final List<OnboardingPage> _pages = const [
     OnboardingPage(
       title: 'Welcome to Server Room Security',
       description: 'Monitor and control your server room security system from anywhere.',
@@ -43,7 +43,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _nextPage() {
     if (_currentPage < _pages.length - 1) {
       _pageController.nextPage(
-        duration: Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     } else {
@@ -55,7 +55,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF0F172A), Color(0xFF1E40AF)], // Blue gradient
             begin: Alignment.topCenter,
@@ -89,21 +89,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildPage(OnboardingPage page) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(page.icon, size: 120, color: Colors.white),
-          SizedBox(height: 32),
+          const SizedBox(height: 32),
           Text(
             page.title,
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
             page.description,
-            style: TextStyle(fontSize: 16, color: Colors.white70),
+            style: const TextStyle(fontSize: 16, color: Colors.white70),
             textAlign: TextAlign.center,
           ),
         ],
@@ -113,7 +113,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildBottomNavigation() {
     return Padding(
-      padding: EdgeInsets.all(24),
+      padding: const EdgeInsets.all(24),
       child: Column(
         children: [
           Row(
@@ -123,25 +123,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               (index) => _buildDot(index),
             ),
           ),
-          SizedBox(height: 24),
+          const SizedBox(height: 24),
           ElevatedButton(
             onPressed: _nextPage,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
-              foregroundColor: Color(0xFF1E40AF),
+              foregroundColor: const Color(0xFF1E40AF),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: EdgeInsets.symmetric(vertical: 14, horizontal: 32),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 32),
             ),
             child: Text(
               _currentPage == _pages.length - 1 ? 'Get Started' : 'Next',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pushReplacementNamed(context, '/login');
             },
-            child: Text('Skip', style: TextStyle(color: Colors.white70, fontSize: 16)),
+            child: const Text('Skip', style: TextStyle(color: Colors.white70, fontSize: 16)),
           ),
         ],
       ),
@@ -150,8 +150,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildDot(int index) {
     return AnimatedContainer(
-      duration: Duration(milliseconds: 300),
-      margin: EdgeInsets.symmetric(horizontal: 4),
+      duration: const Duration(milliseconds: 300),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
       width: _currentPage == index ? 12 : 8,
       height: 8,
       decoration: BoxDecoration(
@@ -167,7 +167,7 @@ class OnboardingPage {
   final String description;
   final IconData icon;
 
-  OnboardingPage({
+  const OnboardingPage({
     required this.title,
     required this.description,
     required this.icon,

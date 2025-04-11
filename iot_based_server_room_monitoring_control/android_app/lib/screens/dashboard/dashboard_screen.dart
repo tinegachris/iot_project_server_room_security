@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:security_iot/providers/app_state.dart';
-import 'package:security_iot/screens/dashboard/dashboardviews/controls_screen.dart';
-import 'package:security_iot/screens/dashboard/dashboardviews/home_screen.dart';
-import 'package:security_iot/screens/dashboard/dashboardviews/logs_screen.dart';
-import 'package:security_iot/screens/dashboard/dashboardviews/manage_users.dart';
-import 'package:security_iot/screens/dashboard/dashboardviews/notifications_screen.dart';
+import '../../providers/app_state.dart';
+import 'dashboardviews/controls_screen.dart';
+import 'dashboardviews/home_screen.dart';
+import 'dashboardviews/logs_screen.dart';
+import 'dashboardviews/manage_users.dart';
+import 'dashboardviews/notifications_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String role;

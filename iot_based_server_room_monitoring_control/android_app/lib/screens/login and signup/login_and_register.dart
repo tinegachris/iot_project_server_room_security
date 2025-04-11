@@ -67,7 +67,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
 
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF0F172A), Color(0xFF1E40AF)],
             begin: Alignment.topCenter,
@@ -77,24 +77,24 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: EdgeInsets.all(24),
+              padding: const EdgeInsets.all(24),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.security_rounded, size: 80, color: Colors.white),
-                    SizedBox(height: 24),
+                    const Icon(Icons.security_rounded, size: 80, color: Colors.white),
+                    const SizedBox(height: 24),
                     Text(
                       isRegistering ? 'Register' : 'Login',
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
                       textAlign: TextAlign.center,
                     ),
-                    SizedBox(height: 32),
+                    const SizedBox(height: 32),
                     if (isRegistering) _buildTextField(_nameController, 'Name', Icons.person),
                     _buildTextField(_emailController, isRegistering ? 'Email' : 'Username', isRegistering ? Icons.email : Icons.person),
                     _buildTextField(_passwordController, 'Password', Icons.lock, isPassword: true),
-                    SizedBox(height: 24),
+                    const SizedBox(height: 24),
                     if (errorMessage != null && !isLoading)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10.0),
@@ -108,19 +108,19 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                       onPressed: isLoading ? null : (isRegistering ? _handleRegister : _handleLogin),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
-                        foregroundColor: Color(0xFF1E40AF),
+                        foregroundColor: const Color(0xFF1E40AF),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: isLoading
-                          ? SizedBox(
+                          ? const SizedBox(
                               height: 20,
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E40AF)))
                             )
-                          : Text(isRegistering ? 'Register' : 'Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          : Text(isRegistering ? 'Register' : 'Login', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     TextButton(
                       onPressed: () => setState(() {
                         isRegistering = !isRegistering;
@@ -132,7 +132,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                       }),
                       child: Text(
                         isRegistering ? 'Already have an account? Login' : "Don't have an account? Register",
-                        style: TextStyle(color: Colors.white70, fontSize: 16),
+                        style: const TextStyle(color: Colors.white70, fontSize: 16),
                       ),
                     ),
                   ],
@@ -147,20 +147,20 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
 
   Widget _buildTextField(TextEditingController controller, String label, IconData icon, {bool isPassword = false}) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
         obscureText: isPassword,
         decoration: InputDecoration(
           filled: true,
-          fillColor: Color.fromRGBO(255, 255, 255, 0.1),
+          fillColor: const Color.fromRGBO(255, 255, 255, 0.1),
           labelText: label,
-          labelStyle: TextStyle(color: Colors.white),
+          labelStyle: const TextStyle(color: Colors.white),
           prefixIcon: Icon(icon, color: Colors.white),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
           errorStyle: TextStyle(color: Colors.redAccent[100]),
         ),
-        style: TextStyle(color: Colors.white),
+        style: const TextStyle(color: Colors.white),
         validator: (value) {
           if (value == null || value.isEmpty) {
             return 'Please enter your $label';

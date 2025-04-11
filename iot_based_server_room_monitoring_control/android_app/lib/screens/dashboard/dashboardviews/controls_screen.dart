@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:security_iot/providers/app_state.dart';
+import '../../../providers/app_state.dart';
 import '../../../models/system_status.dart';
 
 class ControlsScreen extends StatefulWidget {
@@ -277,7 +277,7 @@ class _ControlsScreenState extends State<ControlsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-                'System Alerts (${alerts.length})', 
+                'System Alerts (${alerts.length})',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: Colors.orange[800])
             ),
             const SizedBox(height: 10),
@@ -362,8 +362,8 @@ class _ControlsScreenState extends State<ControlsScreen> {
       icon: Icon(icon, size: 18),
       label: isExecutingThisAction
         ? const SizedBox(
-            width: 18, 
-            height: 18, 
+            width: 18,
+            height: 18,
             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
           )
         : Text(label),
@@ -380,9 +380,11 @@ class _ControlsScreenState extends State<ControlsScreen> {
 
   Future<void> _executeCommand(BuildContext context, String command, [Map<String, dynamic>? data]) async {
     final appState = Provider.of<AppState>(context, listen: false);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
       await appState.executeControlCommand(command, data);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(appState.controlCommandError ?? 'Command "$command" executed successfully!'),
           backgroundColor: appState.controlCommandError == null || appState.controlCommandError!.contains('success') ? Colors.green : Colors.orange,
@@ -390,7 +392,8 @@ class _ControlsScreenState extends State<ControlsScreen> {
       );
       appState.clearControlCommandError();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('Failed to execute "$command": ${appState.controlCommandError ?? e.toString()}'),
           backgroundColor: Colors.red,
@@ -425,7 +428,8 @@ class _ControlsScreenState extends State<ControlsScreen> {
     final TextEditingController alertController = TextEditingController();
     final appState = Provider.of<AppState>(context, listen: false);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
+    final navigator = Navigator.of(context);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -438,13 +442,11 @@ class _ControlsScreenState extends State<ControlsScreen> {
           maxLines: 3,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => navigator.pop(false), child: const Text('Cancel')),
           TextButton(
              onPressed: () {
                if (alertController.text.trim().isNotEmpty) {
-                 Navigator.of(context).pop(true);
-               } else {
-                 // Optional: Show feedback inline? Or just prevent closing.
+                 navigator.pop(true);
                }
              },
              child: const Text('Send Alert'),
@@ -463,7 +465,7 @@ class _ControlsScreenState extends State<ControlsScreen> {
           ),
        );
        appState.clearControlCommandError();
-    } else if (mounted) {
+    } else {
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(appState.controlCommandError ?? 'Failed to post alert'),
@@ -471,6 +473,6 @@ class _ControlsScreenState extends State<ControlsScreen> {
         ),
       );
     }
-     alertController.dispose();
+    alertController.dispose();
   }
 }

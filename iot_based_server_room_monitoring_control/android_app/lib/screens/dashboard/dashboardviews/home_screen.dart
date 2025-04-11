@@ -23,7 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final Color primaryColor = const Color(0xFF1E40AF);
   final Color cardColor = Colors.white;
-  final Color backgroundColor = Color(0xFFF3F4F6);
+  final Color backgroundColor = const Color(0xFFF3F4F6);
   final DateFormat _dateTimeFormatter = DateFormat('yyyy-MM-dd HH:mm:ss');
   final DateFormat _timeFormatter = DateFormat('HH:mm:ss');
 
@@ -178,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: primaryColor,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.1), blurRadius: 10, offset: const Offset(0, 4))]
+          boxShadow: const [BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.1), blurRadius: 10, offset: Offset(0, 4))]
         ),
         child: Column(
           children: [
@@ -239,13 +239,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _infoCard(IconData icon, String label, String value, {Color? cardColor}) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: cardColor ?? this.cardColor, // Use provided color or default
+          color: cardColor ?? this.cardColor,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(0, 0, 0, 0.05),
               blurRadius: 6,
-              offset: const Offset(0, 2),
+              offset: Offset(0, 2),
             ),
           ],
         ),

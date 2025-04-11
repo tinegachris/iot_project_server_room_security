@@ -4,6 +4,7 @@ import 'package:intl/intl.dart'; // For date formatting
 
 import '../providers/app_state.dart';
 import '../models/log_entry.dart';
+import '../screens/logs_page.dart'; // Add import for LogsPage
 
 class LogViewer extends StatelessWidget {
   final int maxEntriesToShow;
@@ -127,7 +128,7 @@ class LogViewer extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                  child: Text(
-                   'Recent Logs', 
+                   'Recent Logs',
                    style: Theme.of(context).textTheme.titleLarge
                  ),
               ),
@@ -145,8 +146,8 @@ class LogViewer extends StatelessWidget {
 
                   return ListTile(
                     leading: Icon(iconData, color: severityColor),
-                    title: Text(message, style: TextStyle(fontWeight: FontWeight.w500)),
-                    subtitle: Text('${log.source ?? '-'} | $formattedTime'),
+                    title: Text(message, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    subtitle: Text('${log.source} | $formattedTime'),
                     dense: true,
                   );
                 },
@@ -160,9 +161,8 @@ class LogViewer extends StatelessWidget {
                      alignment: Alignment.centerRight,
                      child: TextButton(
                        onPressed: () {
-                           // TODO: Navigate to full LogsPage
-                           ScaffoldMessenger.of(context).showSnackBar(
-                             const SnackBar(content: Text('Navigate to full logs page (TODO)'))
+                           Navigator.of(context).push(
+                             MaterialPageRoute(builder: (context) => const LogsPage())
                            );
                        },
                        child: const Text('View All Logs'),
@@ -175,4 +175,4 @@ class LogViewer extends StatelessWidget {
       },
     );
   }
-} 
+}

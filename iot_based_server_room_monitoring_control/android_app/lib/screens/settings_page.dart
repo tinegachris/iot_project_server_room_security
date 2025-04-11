@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_state.dart';
+import '../screens/add_edit_user_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppState>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -13,50 +18,83 @@ class SettingsPage extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         children: <Widget>[
           // --- General Settings ---
-          const ListTile(
-             leading: Icon(Icons.notifications_outlined),
-             title: Text('Notification Preferences'),
-             subtitle: Text('Manage alert channels and types'),
-             // onTap: () { /* TODO: Navigate to notification settings */ },
-             // trailing: Icon(Icons.chevron_right),
+          ListTile(
+             leading: const Icon(Icons.notifications_outlined),
+             title: const Text('Notification Preferences'),
+             subtitle: const Text('Manage alert channels and types'),
+             onTap: () {
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text('Notification settings coming soon')),
+               );
+             },
+             trailing: const Icon(Icons.chevron_right),
           ),
           const Divider(),
           // --- API/Server Settings ---
           ListTile(
              leading: const Icon(Icons.api_outlined),
              title: const Text('API Server Address'),
-             subtitle: Text('Current: [Placeholder Server URL]'), // TODO: Get from AppState/Config
-             // onTap: () { /* TODO: Allow editing API URL */ },
-             // trailing: Icon(Icons.edit_outlined),
+             subtitle: Text('Current: ${appState.currentUser?.token ?? 'Not configured'}'),
+             onTap: () {
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text('API URL editing coming soon')),
+               );
+             },
+             trailing: const Icon(Icons.edit_outlined),
           ),
-          ListTile(
-             leading: const Icon(Icons.vpn_key_outlined),
-             title: const Text('API Key (Main Server)'), // Assuming this is managed elsewhere
-             subtitle: const Text('**********'),
+          const ListTile(
+             leading: Icon(Icons.vpn_key_outlined),
+             title: Text('API Key (Main Server)'),
+             subtitle: Text('**********'),
           ),
           const Divider(),
           // --- Account Settings ---
-          const ListTile(
-             leading: Icon(Icons.account_circle_outlined),
-             title: Text('Account'),
-             subtitle: Text('Manage your profile and password'),
-             // onTap: () { /* TODO: Navigate to account settings */ },
-             // trailing: Icon(Icons.chevron_right),
+          ListTile(
+             leading: const Icon(Icons.account_circle_outlined),
+             title: const Text('Account'),
+             subtitle: const Text('Manage your profile and password'),
+             onTap: () {
+               Navigator.of(context).push(
+                 MaterialPageRoute(
+                   builder: (context) => AddEditUserPage(user: appState.currentUser),
+                 ),
+               );
+             },
+             trailing: const Icon(Icons.chevron_right),
           ),
-          const ListTile(
-             leading: Icon(Icons.logout),
-             title: Text('Logout'),
-             // TODO: Implement logout functionality here or rely on drawer
+          ListTile(
+             leading: const Icon(Icons.logout),
+             title: const Text('Logout'),
+             onTap: () async {
+               final scaffoldMessenger = ScaffoldMessenger.of(context);
+               final navigator = Navigator.of(context);
+
+               try {
+                 await appState.logout();
+                 if (context.mounted) {
+                   navigator.pushReplacementNamed('/login');
+                 }
+               } catch (e) {
+                 if (context.mounted) {
+                   scaffoldMessenger.showSnackBar(
+                     SnackBar(
+                       content: Text('Logout failed: ${e.toString()}'),
+                       backgroundColor: Colors.red,
+                     ),
+                   );
+                 }
+               }
+             },
           ),
-           const Divider(),
+          const Divider(),
           // --- About ---
-           const ListTile(
+          const ListTile(
              leading: Icon(Icons.info_outline),
              title: Text('About'),
-             subtitle: Text('App Version: 1.0.0'), // TODO: Get version dynamically
+             subtitle: Text('App Version: 1.0.0'),
           ),
         ],
       ),
     );
   }
-} 
+}

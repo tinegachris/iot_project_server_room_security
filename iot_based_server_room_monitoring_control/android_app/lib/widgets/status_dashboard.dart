@@ -105,7 +105,7 @@ class StatusDashboard extends StatelessWidget {
             ),
           );
         }
-        
+
         if (status == null) {
            return const Center(child: Text('No system status available.'));
         }
@@ -113,11 +113,11 @@ class StatusDashboard extends StatelessWidget {
         // Format last heartbeat time
         String lastHeartbeatFormatted = "N/A";
           try {
-            lastHeartbeatFormatted = DateFormat('yyyy-MM-dd HH:mm:ss').format(status.raspberryPi.lastHeartbeat!);
+            lastHeartbeatFormatted = DateFormat('yyyy-MM-dd HH:mm:ss').format(status.raspberryPi.lastHeartbeat);
           } catch (_) {
              lastHeartbeatFormatted = "Invalid Date"; // Handle parsing errors if any
           }
-              
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
