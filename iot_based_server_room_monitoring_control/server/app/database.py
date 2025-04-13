@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 import logging
 
-from .models import Base  
+from .models import Base
 
 # Configure logging
 logging.basicConfig(
