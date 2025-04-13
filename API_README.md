@@ -150,32 +150,33 @@ Example response:
 }
 ```
 
-### Unlock Window Example
+### Lock Window Example
 
-To send an unlock command for the window to the Raspberry Pi, use the following `curl` command:
+To send a command to lock the window, use the following `curl` command:
 
 ```bash
-curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
-     -H "Authorization: Bearer <access_token>" \
-     -H "Content-Type: application/json" \
-     -d '{"action": "unlock", "parameters": {"target": "window"}}'
+curl -X POST "<YOUR_SERVER_URL>/api/v1/control" \\
+     -H "Authorization: Bearer <access_token>" \\
+     -H "Content-Type: application/json" \\
+     -d '{"action": "lock_window"}'
 ```
 
-- **Description**: This command sends an `unlock` action for the window to the Raspberry Pi, instructing it to unlock the window.
-- **Response**: JSON confirming the command was sent successfully, with a timestamp and additional details from the Raspberry Pi.
+- **Description**: This command sends a `lock_window` action to the Raspberry Pi, instructing it to lock the window.
+- **Response**: JSON confirming the command was sent successfully, with a timestamp and additional details from the Raspberry Pi (e.g., `{"status": "success", "window_locked": true}`).
 
-Example response:
+### Unlock Window Example
 
-```json
-{
-  "message": "Command 'unlock' sent to Raspberry Pi successfully",
-  "timestamp": "2025-04-09T06:10:08.250239",
-  "result_from_pi": {
-    "door_locked": false,
-    "status": "success"
-  }
-}
+To send a command to unlock the window, use the following `curl` command:
+
+```bash
+curl -X POST "<YOUR_SERVER_URL>/api/v1/control" \\
+     -H "Authorization: Bearer <access_token>" \\
+     -H "Content-Type: application/json" \\
+     -d '{"action": "unlock_window"}'
 ```
+
+- **Description**: This command sends an `unlock_window` action to the Raspberry Pi, instructing it to unlock the window.
+- **Response**: JSON confirming the command was sent successfully, with a timestamp and additional details from the Raspberry Pi (e.g., `{"status": "success", "window_locked": false}`).
 
 ### Capture Image Endpoint Example
 
