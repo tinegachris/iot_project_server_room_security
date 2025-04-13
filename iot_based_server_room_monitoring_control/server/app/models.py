@@ -44,8 +44,8 @@ class Alert(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text)
-    video_url = Column(String(255))
-    image_url = Column(String(255))
+    video_url = Column(String(255), nullable=True, default=None)
+    image_url = Column(String(255), nullable=True, default=None)
     event_timestamp = Column(DateTime, default=datetime.utcnow)
     channels = Column(JSON)  # Changed from String to JSON to store the list directly
     created_by = Column(Integer, ForeignKey("users.id"))

@@ -528,7 +528,7 @@ async def read_users(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions to view all users"
         )
-    
+
     try:
         users = db.query(User).all()
         # FastAPI will automatically convert these User model instances 
@@ -604,7 +604,7 @@ async def update_user(
 
     # Update fields based on provided data (excluding unset fields)
     update_data = user_data.model_dump(exclude_unset=True)
-    
+
     for key, value in update_data.items():
         if key == "password":
             # Hash the password if it's being updated
@@ -645,7 +645,7 @@ async def delete_user(
              status_code=status.HTTP_403_FORBIDDEN,
              detail="Admin users cannot delete themselves"
          )
-         
+
     # Check if the current user is an admin
     if not current_user.is_admin:
         raise HTTPException(
@@ -659,12 +659,18 @@ async def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     try:
-        username = db_user.username # Get username for logging before deleting
+        # Use direct SQL to delete alerts without loading objects
+        db.execute(
+            "DELETE FROM alerts WHERE created_by = :user_id OR acknowledged_by = :user_id",
+            {"user_id": user_id}
+        )
+
+        # Then delete the user
         db.delete(db_user)
         db.commit()
-        logger.info(f"User {user_id} ('{username}') deleted by admin '{current_user.username}'.")
-        # No content to return for DELETE
-        return None # Return None for 204 response
+
+        logger.info(f"User {user_id} ('{db_user.username}') deleted by admin '{current_user.username}'.")
+        return None  # Return None for 204 response
     except Exception as e:
         db.rollback()
         logger.error(f"Error deleting user {user_id}: {e}", exc_info=True)
@@ -697,7 +703,7 @@ async def register_new_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=detail.strip()
             )
-            
+
         # Create the new user with default (non-admin) privileges
         new_user = auth_create_user(
             db=db,
