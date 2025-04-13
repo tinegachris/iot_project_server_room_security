@@ -646,7 +646,7 @@ async def delete_user(
              status_code=status.HTTP_403_FORBIDDEN,
              detail="Admin users cannot delete themselves"
          )
-
+         
     # Check if the current user is an admin
     if not current_user.is_admin:
         raise HTTPException(
@@ -661,10 +661,8 @@ async def delete_user(
 
     try:
         # Use direct SQL to delete alerts without loading objects
-        db.execute(
-            text("DELETE FROM alerts WHERE created_by = :user_id OR acknowledged_by = :user_id"),
-            {"user_id": user_id}
-        )
+        stmt = text("DELETE FROM alerts WHERE created_by = :user_id OR acknowledged_by = :user_id")
+        db.execute(stmt, {"user_id": user_id})
 
         # Then delete the user
         db.delete(db_user)
