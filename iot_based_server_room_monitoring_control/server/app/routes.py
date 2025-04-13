@@ -28,6 +28,7 @@ from .rate_limit import rate_limit
 from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user, get_password_hash
 from ..config.config import config
 from .raspberry_pi_client import RaspberryPiClient
+from sqlalchemy import text
 
 # Configure logging
 logging.basicConfig(
@@ -661,7 +662,7 @@ async def delete_user(
     try:
         # Use direct SQL to delete alerts without loading objects
         db.execute(
-            "DELETE FROM alerts WHERE created_by = :user_id OR acknowledged_by = :user_id",
+            text("DELETE FROM alerts WHERE created_by = :user_id OR acknowledged_by = :user_id"),
             {"user_id": user_id}
         )
 
