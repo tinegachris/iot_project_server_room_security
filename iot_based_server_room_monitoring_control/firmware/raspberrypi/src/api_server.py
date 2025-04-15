@@ -142,7 +142,7 @@ def gpio_cleanup():
         if IS_WINDOW_GPIO_SETUP:
             pins_to_cleanup.append(WINDOW_LOCK_PIN)
             IS_WINDOW_GPIO_SETUP = False
-        
+
         if pins_to_cleanup:
             logger.info(f"Cleaning up GPIO pins: {pins_to_cleanup}...")
             GPIO.cleanup(pins_to_cleanup)
@@ -461,9 +461,9 @@ def create_pi_api_server(sm, cm):
         logger.info(f"Received control command: {action} with params: {params}")
 
         try:
-            if action == "lock":
+            if action in ["lock", "lock_door"]:
                 result = lock_door()
-            elif action == "unlock":
+            elif action in ["unlock", "unlock_door"]:
                 result = unlock_door()
             elif action == "lock_window": # Add window lock action
                 result = lock_window()
