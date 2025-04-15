@@ -172,21 +172,21 @@ async def post_alert(
             detail="Failed to process alert"
         )
 
-@router.post("/control") 
+@router.post("/control")
 @rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
 async def post_control(
     request: Request,
     command: ControlCommand, # Restore body param
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) 
+    current_user: User = Depends(get_current_user)
 ):
     """Post control command to the Raspberry Pi and log the action."""
     # Restore original function body
     try:
         # Validate command
         valid_actions = [
-            "lock", "unlock", "restart_system", "test_sensors",
+            "lock_door", "unlock_door", "restart_system", "test_sensors",
             "capture_image", "record_video", "clear_logs", "update_firmware",
             "lock_window", "unlock_window"
         ]
@@ -197,7 +197,7 @@ async def post_control(
             )
 
         # Check user permissions (Example: only admin can restart)
-        if command.action in ["restart_system", "update_firmware"] and not current_user.is_admin:
+        if command.action in ["restart_system", "clear_logs", "update_firmware"] and not current_user.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions for this command"
@@ -207,13 +207,13 @@ async def post_control(
         result = await execute_control_command(
             action=command.action,
             db=db,
-            user_id=current_user.id, 
-            parameters=command.parameters 
+            user_id=current_user.id,
+            parameters=command.parameters
         )
 
         # Log the command execution locally (using background task is an option too)
         # Logging is now handled within execute_control_command
-        # logger.info(f"Control command '{command.action}' initiated by {current_user.username}") 
+        # logger.info(f"Control command '{command.action}' initiated by {current_user.username}")
 
         return {
             "message": f"Command '{command.action}' sent to Raspberry Pi successfully",
