@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Request, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
@@ -764,7 +765,7 @@ async def get_alerts(
             query = query.filter(Alert.event_timestamp <= end_date)
 
         # Apply pagination
-        alerts = query.order_by(Alert.event_timestamp.desc()).offset(skip).limit(limit).all()
+        alerts = query.order_by(desc(Alert.event_timestamp)).offset(skip).limit(limit).all()
 
         return alerts
     except Exception as e:
