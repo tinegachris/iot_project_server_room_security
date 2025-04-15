@@ -22,7 +22,9 @@ from .schemas import (
     UserCreate,
     PublicUserCreate,
     UserUpdate,
-    User as UserSchema
+    User as UserSchema,
+    AlertResponse,
+    AlertSeverity
 )
 from .rate_limit import rate_limit
 from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user, get_password_hash
@@ -727,4 +729,47 @@ async def register_new_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to register user due to an internal error."
+        )
+
+@router.get("/alerts", response_model=List[AlertResponse])
+@rate_limit(requests=RATE_LIMIT_REQUESTS, window=RATE_LIMIT_WINDOW)
+async def get_alerts(
+    request: Request,
+    skip: int = 0,
+    limit: int = 100,
+    severity: Optional[AlertSeverity] = None,
+    status: Optional[str] = None,
+    acknowledged: Optional[bool] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    GET /alerts endpoint returns a list of alerts with filtering options.
+    """
+    try:
+        query = db.query(Alert)
+
+        # Apply filters
+        if severity:
+            query = query.filter(Alert.severity == severity)
+        if status:
+            query = query.filter(Alert.status == status)
+        if acknowledged is not None:
+            query = query.filter(Alert.acknowledged == acknowledged)
+        if start_date:
+            query = query.filter(Alert.event_timestamp >= start_date)
+        if end_date:
+            query = query.filter(Alert.event_timestamp <= end_date)
+
+        # Apply pagination
+        alerts = query.order_by(Alert.event_timestamp.desc()).offset(skip).limit(limit).all()
+
+        return alerts
+    except Exception as e:
+        logger.error(f"Error retrieving alerts: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve alerts"
         )
