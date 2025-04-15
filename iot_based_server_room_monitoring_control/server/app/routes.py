@@ -166,8 +166,8 @@ async def post_alert(
             sensor_data=alert.sensor_data
         )
         db.add(db_alert)
-        db.commit()
-        db.refresh(db_alert)
+        db.commit()  # Commit the alert to the database
+        db.refresh(db_alert)  # Refresh to get the ID
 
         # Process the alert
         log_entry = await process_alert_and_event(
