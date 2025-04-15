@@ -34,11 +34,11 @@ class UserCreate(UserBase):
 
 # --- Add Schema for Public Registration ---
 class PublicUserCreate(BaseModel):
-    username: str 
+    username: str
     email: EmailStr
     password: str
     # Add name if you want it during registration
-    # name: Optional[str] = None 
+    # name: Optional[str] = None
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
@@ -236,7 +236,7 @@ class MaintenanceLog(BaseModel):
     class Config:
         from_attributes = True
 
-# --- Add Token schema --- 
+# --- Add Token schema ---
 class Token(BaseModel):
     access_token: str
     token_type: str

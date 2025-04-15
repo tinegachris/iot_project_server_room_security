@@ -64,7 +64,7 @@ class RaspberryPiClient:
             try:
                 # Endpoint should now contain the full path e.g., /api/v1/status
                 # Use urljoin for robust URL construction with base host/port
-                full_url = urljoin(self.base_host_url, endpoint.lstrip('/')) 
+                full_url = urljoin(self.base_host_url, endpoint.lstrip('/'))
                 logger.debug(f"Making request: {method.upper()} {full_url}")
                 # Pass the full URL to the request method
                 async with getattr(self.session, method)(full_url, **kwargs) as response:

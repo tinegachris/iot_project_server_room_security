@@ -204,24 +204,24 @@ async def execute_control_command(
     try:
         # Access config hierarchically
         pi_config = config.get("raspberry_pi", {})
-        
+
         # Extract base host/port from configured URL
         pi_full_url = pi_config.get("api_url")
         parsed_url = urlparse(pi_full_url) # pi_full_url is http://host:port/api/v1
         pi_base_host = f"{parsed_url.scheme}://{parsed_url.netloc}/" # Should be http://host:port/
         pi_api_key = pi_config.get("api_key")
-        
+
         if not pi_full_url:
             # Use a more specific error or log and raise HTTP 500?
             logger.error("RASPBERRY_PI_API_URL is not configured in server config (config.yaml or env var)")
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail="Raspberry Pi communication endpoint not configured on server."
             )
 
         # Let the client construct the full URL
         logger.info(f"Sending command '{action}' to Pi client with params: {parameters}")
-        
+
         # Pass only host:port to client
         pi_client = RaspberryPiClient(pi_base_host, pi_api_key)
         async with pi_client as client: # Use async context manager
