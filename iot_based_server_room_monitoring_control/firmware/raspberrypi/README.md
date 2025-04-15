@@ -130,12 +130,12 @@ VIDEO_DURATION=10  # seconds
 
 - Motion Sensor: GPIO 17 (configurable via MOTION_SENSOR_PIN)
 - Door Sensor: GPIO 27 (configurable via DOOR_SENSOR_PIN)
-- Window Sensor: GPIO 27 (configurable via WINDOW_SENSOR_PIN)
+- Window Sensor: GPIO 22 (configurable via WINDOW_SENSOR_PIN)
 - RFID Reader: SPI0 (GPIO 8-11)
 - LED Indicators:
-  - Motion: GPIO 22
-  - Door: GPIO 23
-  - Window: GPIO 24
+  - Motion: GPIO 23
+  - Door: GPIO 24
+  - Window: GPIO 25
 
 ## Usage
 
