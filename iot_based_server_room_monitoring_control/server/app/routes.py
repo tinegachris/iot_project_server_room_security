@@ -771,7 +771,7 @@ async def get_alerts(
     GET /alerts endpoint returns a list of alerts with filtering options.
     """
     try:
-        query = db.query(models.Alert)  # Use models.Alert instead of schemas.Alert
+        query = db.query(models.Alert)
 
         # Apply filters
         if severity:
@@ -788,10 +788,30 @@ async def get_alerts(
         # Apply pagination
         alerts = query.order_by(desc(models.Alert.event_timestamp)).offset(skip).limit(limit).all()
 
-        return alerts
+        # Convert to response schema and handle null created_by
+        response_alerts = []
+        for alert in alerts:
+            alert_dict = {
+                "id": alert.id,
+                "message": alert.message,
+                "video_url": alert.video_url,
+                "event_timestamp": alert.event_timestamp,
+                "channels": alert.channels,
+                "created_by": alert.created_by or 0,  # Use 0 for system-generated alerts
+                "status": alert.status,
+                "sent_at": alert.sent_at,
+                "severity": alert.severity,
+                "sensor_data": alert.sensor_data,
+                "acknowledged": alert.acknowledged,
+                "acknowledged_by": alert.acknowledged_by,
+                "acknowledged_at": alert.acknowledged_at
+            }
+            response_alerts.append(AlertResponse(**alert_dict))
+
+        return response_alerts
     except Exception as e:
         logger.error(f"Error retrieving alerts: {e}")
         raise HTTPException(
-            status_code=500,  # Use direct status code instead of status.HTTP_500_INTERNAL_SERVER_ERROR
+            status_code=500,
             detail="Failed to retrieve alerts"
         )
