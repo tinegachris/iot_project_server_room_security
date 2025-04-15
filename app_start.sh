@@ -20,9 +20,10 @@ mkdir -p "$LOG_DIR"
 echo "Attempting to stop existing processes..."
 pkill -f "$PYTHON_PATH -m $RASPBERRY_PI_MODULE" || true
 pkill -f "$PYTHON_PATH -m $SERVER_MODULE" || true
-lsof -t -i:8000 | xargs kill -9 2>/dev/null || true
-lsof -t -i:5000 | xargs kill -9 2>/dev/null || true
-lsof -t -i:6379 | xargs kill -9 2>/dev/null || true
+pkill -f "ngrok" || true
+echo "Existing processes stopped."
+
+# Wait for a moment to ensure processes are terminated
 sleep 5
 
 echo "Starting Raspberry Pi firmware..."
@@ -39,4 +40,11 @@ echo "Starting Server application..."
 SERVER_PID=$!
 echo "Server application started with PID $SERVER_PID. Logging to $LOG_DIR/server.log"
 
-echo "Both applications started in the background."
+echo "Starting ngrok tunnel..."
+# Start ngrok tunnel for both server and Raspberry Pi
+
+ngrok start --all --config "/home/admin/.config/ngrok/ngrok.yml" --log-format json --log "$LOG_DIR/ngrok.log" > /dev/null 2>&1 &
+NGROK_PID=$!
+echo "Ngrok tunnel started with PID $NGROK_PID. Logging to $LOG_DIR/ngrok.log"
+
+echo "Script execution completed. Processes are running in the background."
