@@ -7,6 +7,12 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import logging
 import json
+import shutil
+import aiohttp
+import asyncio
+from sqlalchemy import text
+
+from . import models  # Add this import
 from .database import get_db
 from .controllers import (
     process_alert_and_event, get_sensor_status,
@@ -31,7 +37,6 @@ from .rate_limit import rate_limit
 from .auth import get_current_user, get_api_key, create_access_token, create_user as auth_create_user, get_password_hash
 from ..config.config import config
 from .raspberry_pi_client import RaspberryPiClient
-from sqlalchemy import text
 
 # Configure logging
 logging.basicConfig(
@@ -750,27 +755,27 @@ async def get_alerts(
     GET /alerts endpoint returns a list of alerts with filtering options.
     """
     try:
-        query = db.query(Alert)
+        query = db.query(models.Alert)  # Use models.Alert instead of schemas.Alert
 
         # Apply filters
         if severity:
-            query = query.filter(Alert.severity == severity)
+            query = query.filter(models.Alert.severity == severity)
         if status:
-            query = query.filter(Alert.status == status)
+            query = query.filter(models.Alert.status == status)
         if acknowledged is not None:
-            query = query.filter(Alert.acknowledged == acknowledged)
+            query = query.filter(models.Alert.acknowledged == acknowledged)
         if start_date:
-            query = query.filter(Alert.event_timestamp >= start_date)
+            query = query.filter(models.Alert.event_timestamp >= start_date)
         if end_date:
-            query = query.filter(Alert.event_timestamp <= end_date)
+            query = query.filter(models.Alert.event_timestamp <= end_date)
 
         # Apply pagination
-        alerts = query.order_by(desc(Alert.event_timestamp)).offset(skip).limit(limit).all()
+        alerts = query.order_by(desc(models.Alert.event_timestamp)).offset(skip).limit(limit).all()
 
         return alerts
     except Exception as e:
         logger.error(f"Error retrieving alerts: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,  # Use direct status code instead of status.HTTP_500_INTERNAL_SERVER_ERROR
             detail="Failed to retrieve alerts"
         )
