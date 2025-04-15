@@ -70,10 +70,10 @@ class SensorManager:
         # Initialize sensors with proper configuration
         try:
             # Motion sensor configuration
-            motion_pin = int(os.getenv("MOTION_SENSOR_PIN", "4"))
+            motion_pin = int(os.getenv("MOTION_SENSOR_PIN", "17"))
             motion_config = SensorConfig(
                 gpio_pin=motion_pin,
-                led_pin=int(os.getenv("MOTION_LED_PIN", "22")),
+                led_pin=int(os.getenv("MOTION_LED_PIN", "23")),
                 name="Motion",
                 verbose=verbose
             )
@@ -81,10 +81,10 @@ class SensorManager:
             self._initialize_sensor_status('motion', type='motion', location=f'pin_{motion_pin}')
 
             # Door sensor configuration
-            door_pin = int(os.getenv("DOOR_SENSOR_PIN", "17"))
+            door_pin = int(os.getenv("DOOR_SENSOR_PIN", "27"))
             door_config = SensorConfig(
                 gpio_pin=door_pin,
-                led_pin=int(os.getenv("DOOR_LED_PIN", "23")),
+                led_pin=int(os.getenv("DOOR_LED_PIN", "24")),
                 name="Door",
                 verbose=verbose
             )
@@ -92,10 +92,10 @@ class SensorManager:
             self._initialize_sensor_status('door', type='door', location=f'pin_{door_pin}')
 
             # Window sensor configuration
-            window_pin = int(os.getenv("WINDOW_SENSOR_PIN", "27"))
+            window_pin = int(os.getenv("WINDOW_SENSOR_PIN", "22"))
             window_config = SensorConfig(
                 gpio_pin=window_pin,
-                led_pin=int(os.getenv("WINDOW_LED_PIN", "24")),
+                led_pin=int(os.getenv("WINDOW_LED_PIN", "25")),
                 name="Window",
                 verbose=verbose
             )
@@ -111,8 +111,12 @@ class SensorManager:
             self._initialize_sensor_status('camera', type='camera', location='main_camera')
 
             # Door lock status (managed by api_server, but status reflected here)
-            door_lock_pin = int(os.getenv("DOOR_LOCK_PIN", "25"))
+            door_lock_pin = int(os.getenv("DOOR_LOCK_PIN", "24"))
             self._initialize_sensor_status('door_lock', type='actuator', location=f'pin_{door_lock_pin}')
+            
+            # Window lock status (managed by api_server, but status reflected here)
+            window_lock_pin = int(os.getenv("WINDOW_LOCK_PIN", "25"))
+            self._initialize_sensor_status('window_lock', type='actuator', location=f'pin_{window_lock_pin}')
 
             logger.info("Sensor manager initialized successfully with initial statuses")
         except Exception as e:
@@ -156,6 +160,11 @@ class SensorManager:
                 fallback_location = None
                 if sensor_name == 'motion': fallback_type = 'motion'
                 elif sensor_name == 'door': fallback_type = 'door'
+                elif sensor_name == 'window': fallback_type = 'window'
+                elif sensor_name == 'rfid': fallback_type = 'rfid'
+                elif sensor_name == 'camera': fallback_type = 'camera'
+                elif sensor_name == 'door_lock': fallback_type = 'actuator'
+                elif sensor_name == 'window_lock': fallback_type = 'actuator'
                 # ... add other fallbacks if necessary ...
 
                 self._sensor_status[sensor_name] = SensorStatus(
@@ -262,7 +271,7 @@ class SensorManager:
         try:
             # Capture image and video
             image_path, image_url = self._camera.capture_image()
-            video_path, video_url = self._camera.record_video(duration=30)
+            video_path, video_url = self._camera.record_video(duration=10)
 
             # Update camera status with latest capture info
             self._update_sensor_status('camera', True, data={

@@ -48,8 +48,8 @@ AUTHORIZED_CARDS: Dict[Tuple[int, int, int, int, int], CardInfo] = {
 
 # Check if running on Raspberry Pi
 try:
-    # IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
-    IS_RASPBERRY_PI = False
+    IS_RASPBERRY_PI = platform.machine().startswith(('arm', 'aarch64'))
+    # IS_RASPBERRY_PI = False
     if IS_RASPBERRY_PI:
         logger.info("Running on Raspberry Pi with real RFID hardware")
     else:
