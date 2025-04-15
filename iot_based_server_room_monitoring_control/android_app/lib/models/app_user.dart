@@ -39,4 +39,4 @@ class User {
       'token': token,
     };
   }
-} 
+}

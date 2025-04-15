@@ -72,7 +72,7 @@ class _HomePageState extends State<HomePage> {
                            appState.fetchInitialData().then((_) {
                               if (!appState.isPollingSuspended) { // Check if retry was successful
                                  appState.startPolling();
-                              } 
+                              }
                               // If still suspended, banner will reappear on next build
                            });
                          },

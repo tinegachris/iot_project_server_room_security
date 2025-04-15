@@ -132,17 +132,17 @@ To send a control command to the Raspberry Pi, use the following `curl` command:
 curl -X POST "https://134c-196-207-133-221.ngrok-free.app/api/v1/control" \
      -H "Authorization: Bearer <access_token>" \
      -H "Content-Type: application/json" \
-     -d '{"action": "lock"}'
+     -d '{"action": "lock_door"}'
 ```
 
-- **Description**: This command sends a `lock` action to the Raspberry Pi, instructing it to lock the door.
+- **Description**: This command sends a `lock_door` action to the Raspberry Pi, instructing it to lock the door.
 - **Response**: JSON confirming the command was sent successfully, with a timestamp and additional details from the Raspberry Pi.
 
 Example response:
 
 ```json
 {
-  "message": "Command 'lock' sent to Raspberry Pi successfully",
+  "message": "Command 'lock_door' sent to Raspberry Pi successfully",
   "timestamp": "2025-04-09T06:08:09.696182",
   "result_from_pi": {
     // Additional details from the Raspberry Pi would be here

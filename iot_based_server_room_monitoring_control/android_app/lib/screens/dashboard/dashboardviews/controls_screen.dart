@@ -70,22 +70,22 @@ class _ControlsScreenState extends State<ControlsScreen> {
                     _buildControlButton(
                       context,
                       'Lock Door',
-                      'lock',
+                      'lock_door',
                       Icons.lock_outline,
                       Colors.redAccent,
                       (appState.isExecutingControlCommand || _isDoorLocked(systemStatus))
                        ? null
-                       : () => _executeCommand(context, 'lock'),
+                       : () => _executeCommand(context, 'lock_door'),
                     ),
                     _buildControlButton(
                       context,
                       'Unlock Door',
-                      'unlock',
+                      'unlock_door',
                       Icons.lock_open_outlined,
                       const Color(0xFF4CAF50),
                       (appState.isExecutingControlCommand || !_isDoorLocked(systemStatus))
                         ? null
-                        : () => _executeCommand(context, 'unlock'),
+                        : () => _executeCommand(context, 'unlock_door'),
                     ),
                   ],
                 ),

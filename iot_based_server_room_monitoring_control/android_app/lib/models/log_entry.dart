@@ -29,15 +29,15 @@ class LogEntry {
     try {
       return LogEntry(
         id: json['id'] as int? ?? -1,
-        eventType: json['event_type'] as String? ?? 'unknown',
-        timestamp: json['timestamp'] != null 
-            ? DateTime.parse(json['timestamp'] as String) 
+        eventType: json['event_type'] as String? ?? '_ _',
+        timestamp: json['timestamp'] != null
+            ? DateTime.parse(json['timestamp'] as String)
             : DateTime.now(),
         details: json['details'] as Map<String, dynamic>?,
         userId: json['user_id'] as int?,
         videoUrl: json['video_url'] as String?,
         severity: json['severity'] as String? ?? 'info', // Default severity if missing
-        source: json['source'] as String? ?? 'unknown', // Default source if missing
+        source: json['source'] as String? ?? '_ _', // Default source if missing
       );
     } catch (e) {
       _logger.warning("Error parsing LogEntry: $e, JSON: $json");

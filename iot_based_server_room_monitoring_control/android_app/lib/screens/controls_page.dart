@@ -79,14 +79,14 @@ class ControlsPage extends StatelessWidget {
              buildControlButton(
               label: 'Lock Door',
               icon: Icons.lock_outline,
-              action: 'lock',
+              action: 'lock_door',
               buttonColor: Colors.teal,
               ctx: context,
             ),
              buildControlButton(
               label: 'Unlock Door',
               icon: Icons.lock_open_outlined,
-              action: 'unlock',
+              action: 'unlock_door',
               buttonColor: Colors.teal[300],
               ctx: context,
             ),
@@ -134,11 +134,11 @@ class ControlsPage extends StatelessWidget {
               buttonColor: Colors.red[700],
               ctx: context,
             ),
-            
+
             const SizedBox(height: 20), // Add some space at the bottom
           ],
         ),
       ),
     );
   }
-} 
+}
