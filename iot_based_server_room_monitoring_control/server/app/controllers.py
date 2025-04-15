@@ -58,12 +58,28 @@ async def process_alert_and_event(
 
         # Create alert if severity is high enough
         if severity in [Severity.WARNING, Severity.ERROR, Severity.CRITICAL]:
+            # Get the system user ID for automatic alerts
+            system_user = db.query(User).filter(User.username == "system").first()
+            if not system_user:
+                # Create system user if it doesn't exist
+                system_user = User(
+                    username="system",
+                    email="system@localhost",
+                    hashed_password="system",  # This is just a placeholder
+                    is_active=True,
+                    is_superuser=True
+                )
+                db.add(system_user)
+                db.commit()
+                db.refresh(system_user)
+
             alert = Alert(
                 message=message,
                 video_url=video_url,
                 severity=AlertSeverity.HIGH if severity == Severity.CRITICAL else AlertSeverity.MEDIUM,
                 sensor_data=sensor_data,
-                channels=["email", "sms"] if severity == Severity.CRITICAL else ["email"]
+                channels=["email", "sms"] if severity == Severity.CRITICAL else ["email"],
+                created_by=system_user.id
             )
             db.add(alert)
             db.commit()
@@ -81,11 +97,11 @@ async def get_sensor_status(db: Session) -> Dict[str, Any]:
         # Use .get() for safer config access with a default, and ensure type is int
         try:
             storage_threshold_str = config.get("monitoring", {}).get("storage_threshold_gb", "10") # Default 10GB as string
-            storage_threshold = int(storage_threshold_str) 
+            storage_threshold = int(storage_threshold_str)
         except (ValueError, TypeError):
             logger.warning(f"Invalid storage_threshold_gb value '{storage_threshold_str}'. Using default 10.")
             storage_threshold = 10
-            
+
         storage = {
             "total_gb": total // (2**30),
             "used_gb": used // (2**30),

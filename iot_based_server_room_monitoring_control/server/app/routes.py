@@ -154,6 +154,21 @@ async def post_alert(
                 detail="Alert message is required"
             )
 
+        # Create a new alert with the current user's ID
+        db_alert = models.Alert(
+            message=alert.message,
+            video_url=alert.video_url,
+            event_timestamp=alert.event_timestamp,
+            channels=alert.channels,
+            created_by=current_user.id,
+            status=alert.status,
+            severity=alert.severity,
+            sensor_data=alert.sensor_data
+        )
+        db.add(db_alert)
+        db.commit()
+        db.refresh(db_alert)
+
         # Process the alert
         log_entry = await process_alert_and_event(
             db,
@@ -168,6 +183,7 @@ async def post_alert(
 
         return {
             "message": "Alert processed successfully",
+            "alert_id": db_alert.id,
             "log_id": log_entry.id,
             "timestamp": log_entry.timestamp
         }
