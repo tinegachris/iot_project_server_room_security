@@ -485,3 +485,62 @@ Example response:
   "last_event_time": null
 }
 ```
+
+### Alerts Endpoint
+
+To retrieve alerts from the system, use the following `curl` command:
+
+```bash
+curl -X GET "https://big-wallaby-great.ngrok-free.app/api/v1/alerts" \
+     -H "Authorization: Bearer <access_token>" \
+     -H "Content-Type: application/json" \
+     -H "ngrok-skip-browser-warning: true"
+```
+
+- **Description**: This endpoint retrieves a list of alerts from the system. Alerts can be filtered by various parameters.
+- **Authentication**: Required (Bearer token)
+- **Query Parameters**:
+  - `skip`: Number of records to skip (default: 0)
+  - `limit`: Maximum number of records to return (default: 100)
+  - `severity`: Filter by alert severity (low, medium, high, critical)
+  - `status`: Filter by alert status (pending, sent, failed)
+  - `acknowledged`: Filter by acknowledgment status (true/false)
+  - `start_date`: Filter alerts after this date
+  - `end_date`: Filter alerts before this date
+
+Example response:
+
+```json
+[
+  {
+    "id": 1,
+    "message": "hi dB alert",
+    "video_url": null,
+    "event_timestamp": "2025-04-16T00:42:08.096223",
+    "channels": ["email"],
+    "created_by": 1,
+    "status": "pending",
+    "sent_at": null,
+    "severity": "medium",
+    "sensor_data": null,
+    "acknowledged": false,
+    "acknowledged_by": null,
+    "acknowledged_at": null
+  }
+]
+```
+
+The response includes the following fields:
+- `id`: Unique identifier for the alert
+- `message`: Alert message content
+- `video_url`: URL to associated video (if any)
+- `event_timestamp`: When the alert was created
+- `channels`: Notification channels for the alert
+- `created_by`: ID of the user who created the alert
+- `status`: Current status of the alert (pending, sent, failed)
+- `sent_at`: Timestamp when the alert was sent
+- `severity`: Alert severity level
+- `sensor_data`: Associated sensor data (if any)
+- `acknowledged`: Whether the alert has been acknowledged
+- `acknowledged_by`: ID of the user who acknowledged the alert
+- `acknowledged_at`: Timestamp when the alert was acknowledged
