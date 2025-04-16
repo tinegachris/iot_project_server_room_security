@@ -21,14 +21,14 @@ def test_trigger_alert():
 
 def test_manual_control_valid():
     # Test valid control command "lock"
-    response = client.post("/api/control", params={"command": "lock"})
+    response = client.post("/api/control", params={"command": "lock_door"})
     assert response.status_code == 200
     data = response.json()
     assert "message" in data
     assert "lock" in data["message"].lower()
 
     # Test valid control command "unlock"
-    response = client.post("/api/control", params={"command": "unlock"})
+    response = client.post("/api/control", params={"command": "unlock_window"})
     assert response.status_code == 200
     data = response.json()
     assert "message" in data
