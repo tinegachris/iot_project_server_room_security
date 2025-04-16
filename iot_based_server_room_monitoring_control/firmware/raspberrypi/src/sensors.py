@@ -12,6 +12,7 @@ import threading
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Any
+import RPi.GPIO as GPIO
 from .motion import MotionSensorHandler, DoorSensorHandler, WindowSensorHandler, SensorConfig
 from .rfid import RFIDReader, RFIDStatus, CardInfo
 from .camera import CameraManager, CameraConfig
@@ -30,7 +31,7 @@ class SensorStatus:
     name: str
     is_active: bool
     last_check: datetime.datetime
-    type: str # Made non-optional: motion, door, window, rfid, camera, door_lock etc.
+    type: str # Made non-optional: motion, door, window, rfid, camera, door_lock, door_unlcok, window_lock, window_unlock etc.
     location: Optional[str] = None # e.g., 'main_door', 'rack_window'
     error: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
@@ -475,19 +476,30 @@ class SensorManager:
             logger.error(f"Camera test failed: {e}")
             all_ok = False
 
-        # Test Door Lock (Check GPIO state if possible?)
-        # This is harder without reading input pins. Maybe just log the expected state.
+        # Test Door Lock
         try:
-            # Example: If using api_server's IS_LOCKED state
-            # from .api_server import IS_LOCKED
-            # current_lock_state = IS_LOCKED
-            # Or query GPIO if possible?
-            # status = GPIO.input(DOOR_LOCK_PIN) # Assuming DOOR_LOCK_PIN is accessible
+
+            GPIO.setmode(GPIO.BCM)
+            door_lock_pin = int(os.getenv("DOOR_LOCK_PIN", "24"))
+            GPIO.setup(door_lock_pin, GPIO.IN)
+            status = GPIO.input(door_lock_pin)
             results['door_lock'] = {"status": "info", "details": "Test not fully implemented (check logs for state)"}
             logger.info("Door Lock Test: Status logged by lock/unlock functions.")
         except Exception as e:
             results['door_lock'] = {"status": "error", "details": str(e)}
             logger.error(f"Door Lock test failed: {e}")
+            all_ok = False
+    
+        # Test Window Lock
+        try:
+            window_lock_pin = int(os.getenv("WINDOW_LOCK_PIN", "25"))
+            GPIO.setup(window_lock_pin, GPIO.IN)
+            status = GPIO.input(window_lock_pin)
+            results['window_lock'] = {"status": "info", "details": "Test not fully implemented (check logs for state)"}
+            logger.info("Window Lock Test: Status logged by lock/unlock functions.")
+        except Exception as e:
+            results['window_lock'] = {"status": "error", "details": str(e)}
+            logger.error(f"Window Lock test failed: {e}")
             all_ok = False
 
         summary = "All tests passed" if all_ok else "One or more tests failed"
