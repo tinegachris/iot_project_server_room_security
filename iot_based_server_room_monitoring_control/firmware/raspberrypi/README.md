@@ -225,14 +225,6 @@ The system implements comprehensive error handling:
 - Comprehensive audit logging
 - Configurable alert severity levels
 
-## Development Notes
-
-For Windows development:
-```powershell
-$env:READTHEDOCS="True"
-pip install picamera
-```
-
 ## Contributing
 
 1. Fork the repository
