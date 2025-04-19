@@ -80,50 +80,92 @@ Create a `.env` file in the project root with the following variables:
 
 ```env
 # Database Configuration
-DATABASE_URL=sqlite:///./server_room_monitor.db
-SECRET_KEY=your-secret-key-here
+DATABASE_URL=sqlite:///./<DATABASE_NAME>.db
 
-# Redis Configuration
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
+# Security Keys
+SECRET_KEY=<SECRET_KEY>
+JWT_SECRET=<JWT_SECRET>
 
-# Twilio Configuration
-TWILIO_ACCOUNT_SID=your-twilio-sid
-TWILIO_AUTH_TOKEN=your-twilio-token
-TWILIO_FROM_NUMBER=your-twilio-number
-TWILIO_TO_NUMBER=your-target-number
+# Twilio SMS Configuration
+TWILIO_ACCOUNT_SID=<TWILIO_ACCOUNT_SID>
+TWILIO_AUTH_TOKEN=<TWILIO_AUTH_TOKEN>
+TWILIO_FROM_NUMBER=<TWILIO_FROM_NUMBER>
+TWILIO_TO_NUMBER=<TWILIO_TO_NUMBER>
 
 # Email Configuration
-SMTP_SERVER=your-smtp-server
-SMTP_PORT=587
-SMTP_USERNAME=your-smtp-username
-SMTP_PASSWORD=your-smtp-password
-EMAIL_FROM=your-email
-EMAIL_TO=target-email
+SMTP_SERVER=<SMTP_SERVER>
+SMTP_PORT=<SMTP_PORT>
+SMTP_USERNAME=<SMTP_USERNAME>
+SMTP_PASSWORD=<SMTP_PASSWORD>
+EMAIL_FROM=<EMAIL_FROM>
+EMAIL_TO=<EMAIL_TO>
 
-# Firebase Configuration
-FCM_SERVER_KEY=your-fcm-key
-FCM_DEVICE_TOKEN=your-device-token
+# Firebase Cloud Messaging
+FCM_SERVER_KEY=<FCM_SERVER_KEY>
+FCM_DEVICE_TOKEN=<FCM_DEVICE_TOKEN>
 
-# Application Settings
-DEBUG=False
-LOG_LEVEL=INFO
-API_PREFIX=/api/v1
-CORS_ORIGINS=["http://localhost:3000","https://yourdomain.com"]
+# Server Configuration
+LOG_LEVEL=<LOG_LEVEL>
+ALLOWED_IPS=<ALLOWED_IPS>
+
+# Redis Configuration
+REDIS_HOST=<REDIS_HOST>
+REDIS_PORT=<REDIS_PORT>
+REDIS_DB=<REDIS_DB>
+REDIS_PASSWORD=<REDIS_PASSWORD>
+
+# Cloud Storage Configuration
+CLOUD_STORAGE_ACCESS_KEY=<CLOUD_STORAGE_ACCESS_KEY>
+CLOUD_STORAGE_SECRET_KEY=<CLOUD_STORAGE_SECRET_KEY>
+
+# Raspberry Pi Configuration
+RASPBERRY_PI_API_URL=<RASPBERRY_PI_API_URL>
+RASPBERRY_PI_API_KEY=<RASPBERRY_PI_API_KEY>
+RASPBERRY_PI_API_PORT=<RASPBERRY_PI_API_PORT>
+
+# GPIO Pin Configuration
+MOTION_SENSOR_PIN=<MOTION_SENSOR_PIN>
+DOOR_SENSOR_PIN=<DOOR_SENSOR_PIN>
+WINDOW_SENSOR_PIN=<WINDOW_SENSOR_PIN>
+
+# Project Base Directory
+PROJECT_DIR=<PROJECT_DIR>
+
+# Camera Settings
+CAMERA_RESOLUTION=<CAMERA_RESOLUTION>
+VIDEO_FPS=<VIDEO_FPS>
+CAMERA_ROTATION=<CAMERA_ROTATION>
+CAMERA_BRIGHTNESS=<CAMERA_BRIGHTNESS>
+VIDEO_OUTPUT_DIR=<VIDEO_OUTPUT_DIR>
+IMAGE_OUTPUT_DIR=<IMAGE_OUTPUT_DIR>
+VIDEO_DURATION=<VIDEO_DURATION>
+MAX_STORAGE_GB=<MAX_STORAGE_GB>
+VIDEO_RETENTION_DAYS=<VIDEO_RETENTION_DAYS>
+
+# Sensor Settings
+MOTION_SENSITIVITY=<MOTION_SENSITIVITY>
+MOTION_TRIGGER_DELAY=<MOTION_TRIGGER_DELAY>
+MOTION_DEBOUNCE_TIME=<MOTION_DEBOUNCE_TIME>
+DOOR_DEBOUNCE_TIME=<DOOR_DEBOUNCE_TIME>
+WINDOW_DEBOUNCE_TIME=<WINDOW_DEBOUNCE_TIME>
 
 # Monitoring Settings
-HEALTH_CHECK_INTERVAL=300  # 5 minutes
-MAX_LOG_RETENTION_DAYS=30
-MAX_VIDEO_RETENTION_DAYS=7
+HEALTH_CHECK_INTERVAL=<HEALTH_CHECK_INTERVAL>
+MAX_RETRIES=<MAX_RETRIES>
+STORAGE_THRESHOLD_GB=<STORAGE_THRESHOLD_GB>
+MAX_LOG_RETENTION_DAYS=<MAX_LOG_RETENTION_DAYS>
+MAX_VIDEO_RETENTION_DAYS=<MAX_VIDEO_RETENTION_DAYS>
+EVENT_COOLDOWN=<EVENT_COOLDOWN>
+CLEANUP_INTERVAL=<CLEANUP_INTERVAL>
+HEARTBEAT_INTERVAL=<HEARTBEAT_INTERVAL>
+OFFLINE_THRESHOLD=<OFFLINE_THRESHOLD>
 
-# Hardware Settings
-MOTION_SENSOR_PIN=17
-DOOR_SENSOR_PIN=27
-RFID_READER_PORT=/dev/ttyUSB0
-CAMERA_RESOLUTION=1920x1080
-VIDEO_FPS=30
-VIDEO_DURATION=10  # seconds
+# Control PINS
+DOOR_LOCK_PIN=<DOOR_LOCK_PIN>
+WINDOW_LOCK_PIN=<WINDOW_LOCK_PIN>
+
+# Main Server API Configuration
+SERVER_API_URL=<SERVER_API_URL>
 ```
 
 ## GPIO Pin Configuration
@@ -202,20 +244,3 @@ pip install picamera
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-The error you're encountering while attempting to install the picamera library on your Windows system arises because picamera is specifically designed for Raspberry Pi devices running a Linux-based operating system. During installation, it tries to access /proc/cpuinfo, a file present in Linux systems that provides CPU information, but absent in Windows environments. This discrepancy leads to the FileNotFoundError you've observed.
-
-If your goal is to develop or test code that will eventually run on a Raspberry Pi, you might want to install picamera on your Windows system to enable code completion and linting in your development environment. While the library won't functionally operate on Windows, installing it can help maintain a smoother development workflow. To achieve this, you can set the READTHEDOCS environment variable to True before installation, which bypasses certain checks during the setup process:
-
-For Windows PowerShell:
-
-powershell
-
-$env:READTHEDOCS="True"
-pip install picamera
-
-## RFID Reader Setup
-
-https://store.nerokas.co.ke/SKU-841
-
-https://geraintw.blogspot.com/2014/01/rfid-and-raspberry-pi.html
